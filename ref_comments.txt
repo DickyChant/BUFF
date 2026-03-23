@@ -1,0 +1,223 @@
+----------------------------------------------------------------------
+Report of the Referee -- DR13756/Jiang
+----------------------------------------------------------------------
+
+The paper is not in a state to be published. Although, the presented
+results look interesting. The paper presents an application of boosted
+decision trees (in particular xgboost) to generative modelling in the
+context of conditional flow matching. The authors consider 4 (partly
+well-known and well-studied) datasets from particle physics. This is
+certainly an interesting approach, but not new from a machine learning
+perspective. The authors refer to the relevant literature, in
+particular their reference [47], and I am not aware of any application
+of these methods to particle physics problems.
+
+Section I introduces the machine learning aspects. The four datasets
+are introduced in section III (A,B,C,D) and then studied in three
+paragraphs in section IV (A,B,C). There are often general explanations
+on the datasets given in the result section IV which would be more
+appropriate a part section Sec. III.
+
+The paper is often confusing as it presents a mixture of details
+rather than focusing on the authors’ own contribution and the specific
+way the datasets are used in the paper. There are several inaccurate
+statements and missing references. At the end, the text misses more
+and more detail. For example, Figure 8 is nowhere mentioned in the
+text, neither are the data labels in this figure.
+
+The most serious problem is that no errors are given in results tables
+or plots and there is no discussion of limitations, e.g. related to
+the limited size of the validation samples. This is not appropriate,
+especially in a physics journal, and not state-of-the art.
+
+For example, the JetNet30 dataset is a 30x3 dimensional, well-studied
+problem where the quality of the surrogate model can be judged by how
+well global quantities such as the mass are reproduced. There are
+well-established standard metrics and methods to assess their
+uncertainties and limitations, which are used in several publications.
+Unfortunately, the authors miss this standard and derive a
+low-dimensional set of 12 variables. Modelling these variables
+independently (Fig. 1) is rather trivial and even the 1-by-1
+correlation (Fig. 2) is not demanding.
+
+At first glance, I had hoped that the work could be improved in a
+normal review process, but there are so many issues that I do not
+think this is the right way to go. I would suggest starting all over
+again. The paper needs to describe the ML model in much more detail to
+allow for a solid evaluation. Rather than presenting the results for 4
+different datasets and just doing a visual inspection of the results,
+a demonstration of how well this approach works on JetNet30 with the
+established metrics would be valuable. In addition, the caloChallenge
+results look promising. A standard approach to evaluating the quality
+is how well a discriminator can distinguish true from false. This is
+all missing.
+
+In the following, I list a small selection of problems using reference
+numbers as used in the paper:
+
+Section I - Introduction
+
+The introduction describes the state-of-the art in applying generative
+models in particle physics in a concise and understandable way. The
+introduction ends with the claim that the paper describes a new
+framework called BUFF as also the title of the paper suggest.
+(Unfortunately, the authors do not provide any code. Public code
+repositories have become standard in the field and would make it much
+easier to judge the quality of the work.)
+
+“In this work, we used several techniques mentioned from the study
+[47] to replace the traditional Neural Network backbone CFM with
+Gradient Boosted Trees (GBT) [48, 49]. We named the framework Boosted
+Decision Tree based Ultra-Fast Flow matching (BUFF) with the model
+flowBDT.”
+
+• It is unclear what is meant by “framework”. Is it a conceptual
+framework or a codebase?
+
+• What actual is the “model flowBDT” for which results are presented
+in contrast to the “BUFF framework”?
+
+• What are the differences compared to [47]?
+
+• How is this implemented (torchcfm? Own code?)
+
+“we used several techniques mentioned from the study [47]”
+
+• It sounds as if the authors were simply inspired by [47]. I have the
+impression that the paper simply copied the method and applied it to
+HEP datasets. That would be fine, but then a title like ‘Applications
+of BDT-based conditional flow matching to particle physics’ would be
+more appropriate.
+
+• If the authors have developed their own code base, this would have
+to be described in much, much more detail.
+
+Section II - IMPROVED UNDERSTANDING FOR TREE-BASED FLOW MATCHING
+
+• It does not become clear what the improvement over [47] is.
+
+“… Equation.4 and Equation.6 over a mini-batch. “
+
+• Equation.6 does not exist
+
+“Additionally, we adapt the setup for GBT to ’mimic’ batch training as
+practiced in deep learning models. The data points are duplicated
+repeatedly to approximate the expectation calculated over all possible
+pairs between input and target sample”
+
+• This follows the text in [47], 3.1 and following, is this the same
+idea?
+
+In general, you can have numerical (real or integer) and categorical
+data. How do you handle these different cases? How do you handle
+varying size of the input data (zero padding?)
+
+Sec. III – DATASET
+
+• DATASETS The datasets section shortly presents four datasets used in
+particle physics for studies on generative ML: JetNet, caloChallenge,
+a dataset which is claimed to be from [63], and a fourth one from
+[66].
+
+A, the paragraph on JetNet, starts “Around 200,000 events of JetNet
+dataset [58] are simulated at leading order using Madgraph [59].”
+
+• This sounds (probably unintended) as if the authors had created the
+files.
+
+B, the paragraph on caloChallenge, “The datasets use the GEANT4 [62]”
+
+• This is true but the important point is that these is related to the
+ATLAS detector. The correct references are given at [61]. You should
+just copy those. “CaloChallenge dataset 1 contains photon shower
+simulated by Geant4 with 368 voxels on 5 different calorimeter
+layers.”
+
+• Dataset 1 contains photons and pions. I assume you mean that you
+restrict yourself to photons from dataset 1
+
+C, Jet Datasets for Unfolding “The dataset used for unfolding task as
+described in Section. IV C is from [63].”
+
+• [63] is the Omnifold paper, there is no section IV C, I assume this
+is https://zenodo.org/records/3548091#.XdbOvjJKhlo (?)
+
+D, Schrödinger Bridge Refinement “The conditional input dataset GFlash
+[66–68] approximates electron showers using a parameterized fast
+simulation”
+
+• GFlash is a traditional fast simulation program [67,68]
+
+• The dataset is from [66] (?) and I assume it is
+10.5281/zenodo.8275193.
+
+Section IV. – TASKS The Tasks section presents results on the four
+introduced datasets.
+
+• ‘Results’ would be a more appropriate title
+
+• You have 4 dataset sections but 3 result sections. This is strange.
+
+A, End to end fast simulation
+
+“The total number of 12 variables calculated from 3 subjets of
+pseudo-jets by JetNet are considered, specifically, The transverse
+momentum and mass of the jet pT, m, the N-subjetiness for exclusive
+n-jet tau1, tau2, tau3, the N-subjetiness ratio tau21 = tau2 /tau1 ,
+tau32 = tau3/tau2 , Energy splitting function defined by the splitting
+scale for n-jet exclusive clustering d12, d23, nth order Energy
+correlation function ecf2, ecf3 …”
+
+• The approach to study this dataset has similarity to [13] which is
+not quoted here.
+
+• There are no references given for your N-subjetiness variables,
+Energy correlation etc.
+
+“Almost all the features sampled from the model give the impressive
+performance on f-divergence metric (i.e. triangular discriminator [70,
+71]).”
+
+• f-divergence is the larger class. The triangular discrimination is a
+f-divergency, but the terms are not identical.
+
+• That this is an impressive performance cannot be claimed without
+evaluating your uncertainties, e,g, by bootstrapping. In addition,
+there is a lower limit on these metrics (comparing to itself) given by
+the finite size of the validation sample.
+
+• Such a form of evaluation is not state-of-the art. (Consider as an
+example for a proper evaluation [58]. There the Wasserstein-1 metric
+on the mass is given with error (as 0.5+-0.1) and truth (as 0.2+-0.1).
+These numbers do not apply to your much simpler problem but meant as
+an example for a proper discussion of such results.)
+
+“We compare the correlation of generated sample with the original
+ones. Correlation contour plots are estimated by the Gaussian kernel.
+Representative correlations among four vector, substructure and energy
+splitting functions (d1, d12, pT, tau3) are shown in Fig.2.”
+
+• You generate tau1, tau2 and tau12. In addition, you can directly
+calculate tau12 from the generated tau1 tau2. Comparing these two
+values would probably a much stronger test than the simple visual
+inspection.
+
+B, Low level simulation for cells and jet constituents
+
+• I am not able to really understand how you treat your data. You
+could just give the shape of the input data.
+
+C, Conditional generation “The public jet dataset with several MC
+generator/tune pairs is used,…” You start in this paragraph
+discussiong results before you define what you are doing.
+
+• This is the dataset from III C? Fig.7
+
+• vertical labels overlap with plot Fig.8
+
+• What is shown here? Flow-OT, Flow-Diffu, These are nowhere mentioned
+in the paper, neither is a Figure 8 mentioned in the text at all.
+
+There are multiple grammatical errors which are clearly distracting.
+The paper would strongly profit from proofreading by a native speaker
+or even a free AI tool.

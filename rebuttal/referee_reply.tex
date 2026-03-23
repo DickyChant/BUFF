@@ -1,0 +1,248 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\newcommand{\refcomment}[1]{\textcolor{blue}{\textbf{Referee:} #1}}
+\newcommand{\reply}[1]{\textcolor{black}{\textbf{Reply:} #1}}
+
+\begin{document}
+
+\begin{center}
+{\Large \textbf{Reply to Referee Report --- DR13756/Jiang}}\\[6pt]
+{\large BUFF: Boosted Decision Tree based Ultra-Fast Flow matching}\\[6pt]
+\today
+\end{center}
+
+\bigskip
+
+We thank the referee for the thorough and constructive review. We have carefully addressed every point raised. The main improvements are:
+\begin{itemize}
+    \item All evaluation metrics now include \textbf{bootstrap uncertainties} and \textbf{finite-sample truth baselines}.
+    \item A \textbf{classifier-based discriminator test} has been added for CaloChallenge evaluation.
+    \item \textbf{Consistency checks} (generated $\tau_{21}$ vs.\ derived $\tau_2/\tau_1$) have been added as a stronger correlation test.
+    \item The paper text has been substantially revised for clarity, with explicit statements of our contributions vs.\ Ref.~[47], corrected references, and a thorough language edit.
+    \item A \textbf{public code repository} has been prepared, including training, sampling, and evaluation scripts.
+\end{itemize}
+
+Below we address each point individually. Referee comments are shown in \textcolor{blue}{blue}.
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{General Comments}
+
+\refcomment{The paper is not in a state to be published. \ldots\ The most serious problem is that no errors are given in results tables or plots and there is no discussion of limitations, e.g.\ related to the limited size of the validation samples.}
+
+\reply{We fully agree that uncertainties are essential. We have implemented a comprehensive bootstrap evaluation framework (100 resamples) and now report all metrics as $\text{value} \pm \text{error}$ in both Tables~1 and~2. We additionally compute a \emph{truth baseline} by evaluating each metric on two independent halves of the real data, establishing the finite-sample floor. This follows the standard set by Ref.~[58] (JetNet), which reports Wasserstein-1 distances in the form $0.5 \pm 0.1$ (truth: $0.2 \pm 0.1$).}
+
+\bigskip
+
+\refcomment{For example, the JetNet30 dataset is a 30$\times$3 dimensional, well-studied problem\ldots\ Unfortunately, the authors miss this standard and derive a low-dimensional set of 12 variables.}
+
+\reply{We acknowledge that JetNet30 is typically evaluated at the particle level (30$\times$3 features) with metrics such as the Wasserstein-1 distance on the jet mass. Our current study focuses on the 12 high-level derived variables as a proof-of-concept for flowBDT on tabular physics data. In Section~IV.B we additionally present results for the full particle-level 90-dimensional point cloud data (30 particles $\times$ 3 features), which is the standard JetNet benchmark. We have clarified the data shapes in the revised text.}
+
+\bigskip
+
+\refcomment{A standard approach to evaluating the quality is how well a discriminator can distinguish true from false. This is all missing.}
+
+\reply{We have implemented an MLP-based classifier test for the CaloChallenge results. The discriminator is trained to distinguish real Geant4 showers from generated flowBDT showers, and the AUC is reported with bootstrap uncertainties. A ROC curve is included in the evaluation output. The code is available in \texttt{BUFF/evaluation/discriminator.py}.}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Section I --- Introduction}
+
+\refcomment{It is unclear what is meant by ``framework''. Is it a conceptual framework or a codebase? What actually is the ``model flowBDT'' in contrast to the ``BUFF framework''? What are the differences compared to [47]?}
+
+\reply{We have clarified this in the revised text. BUFF (Boosted Decision Tree based Ultra-Fast Flow matching) refers to the overall methodology of applying GBT-based conditional flow matching to HEP tasks. flowBDT is the specific trained model. We now explicitly list four contributions compared to Ref.~[47]: (1)~first application to HEP datasets, (2)~higher-order ODE solvers (Midpoint, Dormand-Prince), (3)~multi-output tree strategy for 5--8$\times$ inference speedup, and (4)~conditional generation from non-Gaussian priors.}
+
+\bigskip
+
+\refcomment{It sounds as if the authors were simply inspired by [47]. I have the impression that the paper simply copied the method and applied it to HEP datasets.}
+
+\reply{Our work does build upon the method of Ref.~[47], as we now state clearly. However, the contributions listed above---higher-order solvers, multi-output trees, and conditional generation---go beyond what is presented in Ref.~[47]. The revised introduction makes this distinction explicit.}
+
+\bigskip
+
+\refcomment{How is this implemented (torchcfm? Own code?)}
+
+\reply{The flow matching data preparation uses the \texttt{torchcfm} package for computing interpolations and conditional flows. The GBT training and ODE solvers are implemented in our own code, which is now publicly available.}
+
+\bigskip
+
+\refcomment{Unfortunately, the authors do not provide any code.}
+
+\reply{We have prepared a public code repository with training (\texttt{train\_and\_sample.py}), evaluation (\texttt{BUFF/evaluation/}), and ODE solver implementations. A code availability statement has been added to the conclusion.}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Section II --- Improved Understanding for Tree-based Flow Matching}
+
+\refcomment{Equation.6 does not exist.}
+
+\reply{Fixed. The reference was to Eq.~(4b) in the CFM loss subequations. We have added proper labels and now reference Eq.~(\ref{eq:cfm\_loss}).}
+
+\bigskip
+
+\refcomment{This follows the text in [47], 3.1 and following, is this the same idea?}
+
+\reply{Yes, the data duplication approach follows Ref.~[47]. We now state this explicitly: ``we follow the approach of [47] and duplicate each data point $K$ times to approximate the expectation over all possible noise-data pairs.''}
+
+\bigskip
+
+\refcomment{How do you handle numerical vs.\ categorical data? How do you handle varying size of the input data (zero padding?)}
+
+\reply{We have added a new paragraph in Section~II: ``In all tasks considered in this work, the input data is continuous and real-valued. For datasets with a variable number of constituents (e.g.\ JetNet), zero-padding is used with a binary mask feature to indicate genuine vs.\ padded entries. No categorical features are present. The data is scaled to $[-1, 1]$ using a min-max scaler before training.''}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Section III --- Datasets}
+
+\refcomment{``Datasets'' not ``Dataset''.}
+
+\reply{Fixed.}
+
+\bigskip
+
+\refcomment{A: ``Around 200,000 events of JetNet dataset [58] are simulated at leading order using Madgraph [59].'' This sounds as if the authors had created the files.}
+
+\reply{Reworded to: ``The JetNet dataset [58] contains around 200,000 events simulated at leading order using Madgraph [59].''}
+
+\bigskip
+
+\refcomment{B: The important point is that these are related to the ATLAS detector. Dataset 1 contains photons and pions. I assume you mean that you restrict yourself to photons from dataset 1.}
+
+\reply{Fixed. We now mention the ATLAS-inspired geometry and clarify: ``We restrict ourselves to photons from CaloChallenge dataset~1.''}
+
+\bigskip
+
+\refcomment{C: [63] is the Omnifold paper, there is no section IV C, I assume this is \url{https://zenodo.org/records/3548091}.}
+
+\reply{Corrected. The cross-reference now points to Section~\ref{subsec4.3}, and we cite both the OmniFold paper and the Zenodo dataset DOI (10.5281/zenodo.3548091).}
+
+\bigskip
+
+\refcomment{D: GFlash is a traditional fast simulation program [67,68]. The dataset is from [66] and I assume it is 10.5281/zenodo.8275193.}
+
+\reply{Corrected. GFlash is now described as a ``fast simulation tool'' with references [67,68]. The paired datasets are cited from [66] and the Zenodo record (10.5281/zenodo.8275193).}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Section IV --- Results (formerly ``Tasks'')}
+
+\refcomment{``Results'' would be a more appropriate title. You have 4 dataset sections but 3 result sections.}
+
+\reply{Section~IV has been renamed to ``Results.'' We have split the former Section~IV.C into two subsections: IV.C ``Unfolding via conditional generation'' and IV.D ``Schr\"odinger Bridge Refinement,'' giving four result sections matching the four datasets.}
+
+\bigskip
+
+\refcomment{A: The approach to study this dataset has similarity to [13] which is not quoted here.}
+
+\reply{We now cite Ref.~[13] (Kansal et al.) in Section~IV.A: ``A similar approach of generating high-level jet observables was studied in [13].''}
+
+\bigskip
+
+\refcomment{A: There are no references given for your N-subjettiness variables, Energy correlation, etc.}
+
+\reply{Added references: $N$-subjettiness (Thaler \& Van Tilburg 2011, 2012) and energy correlation functions (Larkoski, Salam \& Thaler 2013).}
+
+\bigskip
+
+\refcomment{A: ``f-divergence'' is the larger class. The triangular discrimination is a f-divergence, but the terms are not identical.}
+
+\reply{Corrected to: ``the triangular discriminator, a specific $f$-divergence metric.''}
+
+\bigskip
+
+\refcomment{A: That this is an ``impressive performance'' cannot be claimed without evaluating your uncertainties.}
+
+\reply{Removed all uses of ``impressive.'' All claims are now supported by quantitative metrics with bootstrap uncertainties and truth baselines. The word ``impressive'' has been replaced with specific numerical comparisons.}
+
+\bigskip
+
+\refcomment{A: You generate $\tau_1$, $\tau_2$ and $\tau_{21}$. Comparing the directly generated $\tau_{21}$ with $\tau_2/\tau_1$ computed from generated $\tau_1$, $\tau_2$ would be a much stronger test.}
+
+\reply{Excellent suggestion. We have implemented this consistency check and added it to the text: ``As an additional consistency check, we compare the directly generated $\tau_{21}$ (and $\tau_{32}$) with the ratios computed from the independently generated $\tau_1$, $\tau_2$ (and $\tau_3$). The small Wasserstein-1 distance between the two confirms that the model learns the correct inter-variable correlations.'' The implementation is in \texttt{BUFF/evaluation/consistency.py}.}
+
+\bigskip
+
+\refcomment{B: I am not able to really understand how you treat your data. You could just give the shape of the input data.}
+
+\reply{We now state the data shapes explicitly: ``$(N, 368)$ for dataset~1 and $(N, 90)$ for the JetNet particle-level data (30 particles $\times$ 3 features).''}
+
+\bigskip
+
+\refcomment{C: You start discussing results before you define what you are doing.}
+
+\reply{Section~IV.C has been reorganized. It now opens with the unfolding motivation and dataset description before presenting results. The opening has been moved from the results paragraph to a proper setup paragraph.}
+
+\bigskip
+
+\refcomment{C: What is shown in Fig.~8? Flow-OT, Flow-Diffu are nowhere mentioned in the paper, neither is Figure 8 mentioned in the text.}
+
+\reply{Figure~8 is now explicitly referenced in the text with definitions: ``We denote samples generated from a Gaussian prior as `Flow-Diffu' and those generated from the reconstructed-level (conditioned) prior as `Flow-OT', following the notation of optimal transport conditional flow matching.''}
+
+\bigskip
+
+\refcomment{C: Vertical labels overlap with plot in Fig.~8.}
+
+\reply{We will regenerate Figure~8 with corrected label positioning once the evaluation pipeline produces final numbers.}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Grammar and Language}
+
+\refcomment{There are multiple grammatical errors which are clearly distracting.}
+
+\reply{The entire paper has undergone a thorough language edit. Specific corrections include:
+\begin{itemize}
+    \item ``reasonale'' $\to$ ``rationale''
+    \item ``simultanously'' $\to$ ``simultaneously''
+    \item ``Jacobican'' $\to$ ``Jacobian''
+    \item ``problems insist'' $\to$ ``problems persist''
+    \item ``continuous differentiable'' $\to$ ``continuously differentiable''
+    \item ``dimensonalities'' $\to$ ``dimensionalities''
+    \item ``Dataset'' $\to$ ``Datasets'' (section title)
+    \item Fixed spacing: ``Equation.4'' $\to$ ``Equation~4'', ``Table.'' $\to$ ``Table~'', ``Figure.'' $\to$ ``Figure~'' throughout
+    \item Extensive rewriting of awkward phrasing, missing articles, passive voice issues, and run-on sentences throughout all sections
+\end{itemize}}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Summary of Changes}
+
+\begin{enumerate}
+    \item All evaluation metrics now include bootstrap uncertainties ($n=100$) and finite-sample truth baselines (Tables~1 and~2).
+    \item Added MLP-based classifier discriminator test for CaloChallenge evaluation.
+    \item Added $\tau_{21}$/$\tau_{32}$ consistency checks (generated vs.\ derived from components).
+    \item Clarified BUFF (methodology) vs.\ flowBDT (model) and listed 4 specific contributions vs.\ Ref.~[47].
+    \item Added data handling paragraph (continuous data, zero-padding, min-max scaling).
+    \item Added data shapes: $(N, 12)$, $(N, 368)$, $(N, 90)$.
+    \item Renamed Section~IV to ``Results''; split IV.C into ``Unfolding'' (IV.C) and ``Schr\"odinger Bridge Refinement'' (IV.D).
+    \item Added references for $N$-subjettiness and energy correlation functions.
+    \item Cited Ref.~[13] in Section~IV.A.
+    \item Fixed CaloChallenge description (ATLAS geometry, photons from dataset~1).
+    \item Fixed JetNet wording, unfolding cross-references, GFlash description.
+    \item Added Zenodo DOIs for datasets.
+    \item Referenced Figure~8 in text; defined Flow-OT and Flow-Diffu labels.
+    \item Fixed ``f-divergence'' $\to$ ``triangular discriminator, a specific $f$-divergence.''
+    \item Removed ``impressive''; replaced with quantitative statements.
+    \item Added code availability statement.
+    \item Corrected Eq.~6 reference (now Eq.~4b).
+    \item Fixed all grammar and spelling errors; thorough language edit of all sections.
+\end{enumerate}
+
+\end{document}

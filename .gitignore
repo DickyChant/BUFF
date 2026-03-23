@@ -1,0 +1,26 @@
+# Data files (large)
+data/
+*.hdf5
+
+# Model artifacts (large)
+results/*/models.pkl
+results/*/scaler.pkl
+results/*/*.npy
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# LaTeX build
+*.aux
+*.log
+*.out
+*.synctex.gz
+
+# IDE
+.idea/
+.vscode/
+
+# uv
+uv.lock
