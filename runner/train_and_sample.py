@@ -42,11 +42,14 @@ from torchcfm.conditional_flow_matching import (
 )
 from tqdm import tqdm, trange
 
-from BUFF.runner.ode_example import (
-    dpori5_solve_numpy,
-    euler_solve,
-    midpoint_solve,
-)
+try:
+    from BUFF.runner.ode_example import (
+        dpori5_solve_numpy, euler_solve, midpoint_solve,
+    )
+except ImportError:
+    from runner.ode_example import (
+        dpori5_solve_numpy, euler_solve, midpoint_solve,
+    )
 
 
 # ── Derived feature definitions ──────────────────────────────────────
@@ -113,10 +116,14 @@ def restore_derived_features(X_indep, derived_info):
 
 # ── Cholesky correlation correction ─────────────────────────────────
 
-def cholesky_correction(gen, real):
+def cholesky_correction(gen, real, alpha=1.0):
     """Match the correlation structure of generated data to real data.
 
     Preserves marginal means/stds while correcting the correlation matrix.
+    When alpha < 1.0, blends between original and fully corrected:
+        result = (1 - alpha) * gen + alpha * corrected
+    This is useful to avoid extreme tail distortions that can amplify
+    through derived features (e.g. tau32 = tau3/tau2).
     """
     from scipy.linalg import cholesky, solve_triangular
 
@@ -148,6 +155,8 @@ def cholesky_correction(gen, real):
     # Restore to original scale (using generated marginals)
     gen_corrected = gen_recorr.T * gen_std + gen_mean
 
+    if alpha < 1.0:
+        return (1 - alpha) * gen + alpha * gen_corrected
     return gen_corrected
 
 
@@ -168,6 +177,7 @@ def parse_args():
     p.add_argument("--reg-lambda", type=float, default=0.1)
     p.add_argument("--reg-alpha", type=float, default=0.2)
     p.add_argument("--subsample", type=float, default=1.0)
+    p.add_argument("--colsample-bytree", type=float, default=1.0, dest="colsample_bytree")
     p.add_argument("--tree-method", type=str, default="hist")
     p.add_argument(
         "--flow-type",
@@ -196,6 +206,10 @@ def parse_args():
     p.add_argument(
         "--cholesky", action="store_true",
         help="Apply Cholesky correlation correction post-generation",
+    )
+    p.add_argument(
+        "--cholesky-alpha", type=float, default=1.0,
+        help="Blending factor for Cholesky correction (0=none, 1=full, 0.3 recommended)",
     )
     p.add_argument(
         "--real-data-for-cholesky", type=str, default=None,
@@ -289,6 +303,7 @@ def train_batched(X_scaled, y, duplicate_K, n_t, flow_type, sigma, mask_y,
             X_masked = xt_np[mask, :]
             y_masked = ut_np[mask, :]
 
+            colsample = getattr(args, 'colsample_bytree', 1.0)
             if multi_output:
                 model = xgb.XGBRegressor(
                     n_estimators=args.n_estimators,
@@ -299,9 +314,10 @@ def train_batched(X_scaled, y, duplicate_K, n_t, flow_type, sigma, mask_y,
                     reg_lambda=args.reg_lambda,
                     reg_alpha=args.reg_alpha,
                     subsample=args.subsample,
+                    colsample_bytree=colsample,
                     seed=666,
                     tree_method=args.tree_method,
-                    device="cpu",
+                    device=getattr(args, 'device', 'cpu'),
                     multi_strategy="multi_output_tree",
                 )
                 model.fit(X_masked, y_masked)
@@ -317,9 +333,10 @@ def train_batched(X_scaled, y, duplicate_K, n_t, flow_type, sigma, mask_y,
                         reg_lambda=args.reg_lambda,
                         reg_alpha=args.reg_alpha,
                         subsample=args.subsample,
+                        colsample_bytree=colsample,
                         seed=666,
                         tree_method=args.tree_method,
-                        device="cpu",
+                        device=getattr(args, 'device', 'cpu'),
                     )
                     model.fit(X_masked, y_masked[:, k])
                     regr[ji][i][k] = model
@@ -329,6 +346,280 @@ def train_batched(X_scaled, y, duplicate_K, n_t, flow_type, sigma, mask_y,
     if multi_output:
         return regr_mo
     return regr
+
+
+def train_batched_with_residuals(X_scaled, y, duplicate_K, n_t, flow_type, sigma,
+                                  mask_y, y_uniques, c, args, pass2_args=None):
+    """Two-pass training: pass-1 per-feature models + pass-2 residual correction.
+
+    Pass 2 trains on augmented input [xt, v_hat] to predict (true_v - v_hat),
+    giving each feature's model access to what other features predicted.
+
+    Returns (pass1_models, pass2_models).
+    """
+    FM = build_flow_matcher(flow_type, sigma)
+    t_levels = np.linspace(1e-3, 1, num=n_t)
+    X1 = np.tile(X_scaled, (duplicate_K, 1))
+
+    if pass2_args is None:
+        pass2_args = type(args)()
+        for k, v in vars(args).items():
+            setattr(pass2_args, k, v)
+        pass2_args.max_depth = 4
+        pass2_args.n_estimators = 100
+        pass2_args.eta = 0.1
+
+    # Pass 1: standard per-feature models
+    regr_p1 = [[[None for _ in range(c)] for _ in range(n_t)] for _ in y_uniques]
+    # Pass 2: residual models with augmented input
+    regr_p2 = [[[None for _ in range(c)] for _ in range(n_t)] for _ in y_uniques]
+
+    colsample = getattr(args, 'colsample_bytree', 1.0)
+    colsample_p2 = getattr(pass2_args, 'colsample_bytree', 1.0)
+
+    for i in trange(n_t, desc="Training (two-pass)"):
+        X0 = np.random.normal(size=X1.shape)
+        t = torch.ones(X0.shape[0]) * t_levels[i]
+        _, xt, ut = FM.sample_location_and_conditional_flow(
+            torch.from_numpy(X0), torch.from_numpy(X1), t=t
+        )
+        xt_np, ut_np = xt.numpy(), ut.numpy()
+
+        # --- Pass 1: train per-feature models ---
+        for ji, j in enumerate(y_uniques):
+            mask = mask_y[j]
+            X_masked = xt_np[mask, :]
+            y_masked = ut_np[mask, :]
+            for k in range(c):
+                model = xgb.XGBRegressor(
+                    n_estimators=args.n_estimators, objective="reg:squarederror",
+                    eta=args.eta, max_depth=args.max_depth, n_jobs=args.n_threads,
+                    reg_lambda=args.reg_lambda, reg_alpha=args.reg_alpha,
+                    subsample=args.subsample, colsample_bytree=colsample,
+                    seed=666, tree_method=args.tree_method, device=getattr(args, 'device', 'cpu'),
+                )
+                model.fit(X_masked, y_masked[:, k])
+                regr_p1[ji][i][k] = model
+
+        # --- Pass 2: predict pass-1 velocities, train residual models ---
+        for ji, j in enumerate(y_uniques):
+            mask = mask_y[j]
+            X_masked = xt_np[mask, :]
+            y_masked = ut_np[mask, :]
+
+            # Get pass-1 predictions
+            v_hat = np.zeros_like(y_masked)
+            for k in range(c):
+                v_hat[:, k] = regr_p1[ji][i][k].predict(X_masked)
+
+            # Augmented input: [xt, v_hat]
+            X_aug = np.hstack([X_masked, v_hat])
+            residual = y_masked - v_hat
+
+            for k in range(c):
+                model = xgb.XGBRegressor(
+                    n_estimators=pass2_args.n_estimators, objective="reg:squarederror",
+                    eta=pass2_args.eta, max_depth=pass2_args.max_depth,
+                    n_jobs=pass2_args.n_threads,
+                    reg_lambda=pass2_args.reg_lambda, reg_alpha=pass2_args.reg_alpha,
+                    subsample=pass2_args.subsample, colsample_bytree=colsample_p2,
+                    seed=666, tree_method=pass2_args.tree_method, device=getattr(pass2_args, 'device', 'cpu'),
+                )
+                model.fit(X_aug, residual[:, k])
+                regr_p2[ji][i][k] = model
+
+    return regr_p1, regr_p2
+
+
+# ── Time-conditioned training ─────────────────────────────────────
+
+def _make_feature_interactions(X):
+    """Append pairwise product features to X. Returns (X_aug, n_interact)."""
+    n_feat = X.shape[1]
+    interactions = []
+    for i in range(n_feat):
+        for j in range(i + 1, n_feat):
+            interactions.append(X[:, i] * X[:, j])
+    if not interactions:
+        return X, 0
+    interact_mat = np.column_stack(interactions)
+    return np.hstack([X, interact_mat]), len(interactions)
+
+
+def train_time_conditioned(X_scaled, y, duplicate_K, n_t, flow_type, sigma,
+                           mask_y, y_uniques, c, args, feature_interactions=False):
+    """Train a single multi-output XGBoost per class across ALL timesteps.
+
+    Instead of n_t separate models, pools all timestep data together with t
+    appended as an extra input feature: input = [x_t, t] → output = v_t.
+    This is analogous to how neural networks condition on time.
+
+    Memory-efficient: subsamples each timestep's data to keep total dataset
+    size manageable (controlled by max_samples_per_timestep).
+
+    Returns: (models_dict, input_dim) where models_dict[class_idx] = one XGBoost model,
+    and input_dim is the augmented input dimension (for inference).
+    """
+    FM = build_flow_matcher(flow_type, sigma)
+    t_levels = np.linspace(1e-3, 1, num=n_t)
+    X1 = np.tile(X_scaled, (duplicate_K, 1))
+
+    # Memory budget: limit total training samples to ~3M rows to stay under ~2GB
+    # With N=178k, K=20, that's 3.56M per timestep × 30 = 107M total — way too much.
+    # Subsample each timestep to keep total manageable.
+    max_total_samples = getattr(args, 'max_total_samples', 3_000_000)
+    max_per_timestep = max_total_samples // n_t
+    n_dup = X1.shape[0]
+
+    # Collect flow pairs from all timesteps (subsampled)
+    all_xt = {ji: [] for ji in range(len(y_uniques))}
+    all_ut = {ji: [] for ji in range(len(y_uniques))}
+
+    for i in trange(n_t, desc="Building flow pairs (all timesteps)"):
+        X0 = np.random.normal(size=X1.shape)
+        t = torch.ones(X0.shape[0]) * t_levels[i]
+        _, xt, ut = FM.sample_location_and_conditional_flow(
+            torch.from_numpy(X0), torch.from_numpy(X1), t=t
+        )
+        xt_np, ut_np = xt.numpy(), ut.numpy()
+
+        # Subsample if needed to stay within memory budget
+        if xt_np.shape[0] > max_per_timestep:
+            idx = np.random.choice(xt_np.shape[0], max_per_timestep, replace=False)
+            xt_np = xt_np[idx]
+            ut_np = ut_np[idx]
+
+        # Append time as extra column
+        t_col = np.full((xt_np.shape[0], 1), t_levels[i])
+        xt_with_t = np.hstack([xt_np, t_col])
+
+        for ji, j in enumerate(y_uniques):
+            mask = mask_y[j]
+            # Mask must be applied to subsampled indices
+            if xt_with_t.shape[0] < len(mask):
+                # Subsampled — mask doesn't align, just use all rows
+                # (subsampling already mixed classes proportionally)
+                all_xt[ji].append(xt_with_t)
+                all_ut[ji].append(ut_np)
+            else:
+                all_xt[ji].append(xt_with_t[mask, :])
+                all_ut[ji].append(ut_np[mask, :])
+
+        # Free intermediate arrays
+        del X0, xt, ut, xt_np, ut_np
+
+    # Concatenate all timesteps and train one model per class
+    models = {}
+    colsample = getattr(args, 'colsample_bytree', 1.0)
+
+    for ji, j in enumerate(y_uniques):
+        X_all = np.vstack(all_xt[ji])
+        y_all = np.vstack(all_ut[ji])
+
+        # Free the lists immediately after concatenation
+        del all_xt[ji], all_ut[ji]
+
+        if feature_interactions:
+            X_all, n_interact = _make_feature_interactions(X_all)
+            print(f"  Class {j}: added {n_interact} interaction features → {X_all.shape[1]} input dims")
+
+        print(f"  Class {j}: training on {X_all.shape[0]} samples, "
+              f"{X_all.shape[1]} input features → {y_all.shape[1]} outputs")
+
+        model = xgb.XGBRegressor(
+            n_estimators=args.n_estimators,
+            objective="reg:squarederror",
+            eta=args.eta,
+            max_depth=args.max_depth,
+            n_jobs=args.n_threads,
+            reg_lambda=args.reg_lambda,
+            reg_alpha=args.reg_alpha,
+            subsample=args.subsample,
+            colsample_bytree=colsample,
+            seed=666,
+            tree_method=args.tree_method,
+            device=getattr(args, 'device', 'cpu'),
+            multi_strategy="multi_output_tree",
+        )
+        model.fit(X_all, y_all)
+        models[ji] = model
+
+        # Free training data after fitting
+        del X_all, y_all
+
+    input_dim = c + 1  # features + time
+    if feature_interactions:
+        # Recompute from dimensions
+        input_dim = (c + 1) + (c + 1) * c // 2
+
+    return models, input_dim
+
+
+def build_model_fn_time_conditioned(models, y_uniques, c, n_t, mask_y,
+                                     feature_interactions=False):
+    """Model function for time-conditioned single-model inference.
+
+    At each ODE step, appends the current time t as an extra input column
+    and queries the single model for that class.
+    """
+    def my_model(t, xt, mask_y=None):
+        xt = xt.reshape(xt.shape[0] // c, c)
+        out = np.zeros(xt.shape)
+        n = xt.shape[0]
+
+        # Append time column
+        t_col = np.full((n, 1), t)
+        xt_with_t = np.hstack([xt, t_col])
+
+        if feature_interactions:
+            xt_with_t, _ = _make_feature_interactions(xt_with_t)
+
+        for j, label in enumerate(y_uniques):
+            m = mask_y[label]
+            out[m, :] = models[j].predict(xt_with_t[m, :])
+        return out.reshape(-1)
+
+    return partial(my_model, mask_y=mask_y)
+
+
+def build_model_fn_residual(regr_p1, regr_p2, y_uniques, c, n_t, mask_y):
+    """Model function for two-pass residual stacking.
+
+    At each evaluation: predict pass-1 velocity, stack [xt, v_hat],
+    predict pass-2 residual, return v_hat + residual.
+    """
+    def my_model(t, xt, mask_y=None):
+        xt = xt.reshape(xt.shape[0] // c, c)
+        out = np.zeros(xt.shape)
+        i = int(round(t * (n_t - 1)))
+        for j, label in enumerate(y_uniques):
+            m = mask_y[label]
+            X_m = xt[m, :]
+            # Pass 1
+            v_hat = np.zeros((X_m.shape[0], c))
+            for k in range(c):
+                v_hat[:, k] = regr_p1[j][i][k].predict(X_m)
+            # Pass 2: augmented input
+            X_aug = np.hstack([X_m, v_hat])
+            for k in range(c):
+                v_hat[:, k] += regr_p2[j][i][k].predict(X_aug)
+            out[m, :] = v_hat
+        return out.reshape(-1)
+
+    return partial(my_model, mask_y=mask_y)
+
+
+def build_model_fn_ensemble(model_fns):
+    """Average predictions from multiple model functions."""
+    n = len(model_fns)
+
+    def my_model(t, xt):
+        total = model_fns[0](t=t, xt=xt)
+        for fn in model_fns[1:]:
+            total = total + fn(t=t, xt=xt)
+        return total / n
+
+    return my_model
 
 
 # Legacy non-batched functions for backward compatibility
@@ -385,7 +676,7 @@ def train_models(X_train, y_train, mask_y, y_uniques, n_t, c, args):
             subsample=args.subsample,
             seed=666,
             tree_method=args.tree_method,
-            device="cpu",
+            device=getattr(args, 'device', 'cpu'),
         )
         model.fit(X, y_col)
         return model
@@ -541,20 +832,22 @@ def main():
         multi_output=args.multi_output,
     )
 
+    # Cholesky correlation correction (applied BEFORE restoring derived features
+    # so that functional relationships like tau21=tau2/tau1 are preserved)
+    if args.cholesky:
+        alpha = args.cholesky_alpha
+        print(f"Applying Cholesky correlation correction (alpha={alpha})...")
+        if args.real_data_for_cholesky:
+            real_ref = np.load(args.real_data_for_cholesky)
+        else:
+            real_ref = X  # Use the (possibly stripped) training data as reference
+        solution = cholesky_correction(solution, real_ref, alpha=alpha)
+
     # Restore derived features if stripped
     if derived_info is not None:
         print("Restoring derived features (tau21, tau32, d2_obs) from independent features...")
         solution = restore_derived_features(solution, derived_info)
         print(f"  Output shape: {solution.shape}")
-
-    # Cholesky correlation correction
-    if args.cholesky:
-        print("Applying Cholesky correlation correction...")
-        if args.real_data_for_cholesky:
-            real_ref = np.load(args.real_data_for_cholesky)
-        else:
-            real_ref = X_raw
-        solution = cholesky_correction(solution, real_ref)
 
     np.save(os.path.join(args.output_dir, "generated_samples.npy"), solution)
     np.save(os.path.join(args.output_dir, "generated_labels.npy"), labels)
