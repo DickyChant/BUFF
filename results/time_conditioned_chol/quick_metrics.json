@@ -1,0 +1,37 @@
+{
+  "auc_9": 0.9944604748823762,
+  "auc_12": 0.9993472804202248,
+  "mean_delta_rho": 0.27964196533951985,
+  "max_delta_rho": 0.8828376460082138,
+  "consistency_tau21_w1": 0.0,
+  "consistency_tau32_w1": 0.0,
+  "w1_per_feature": {
+    "d12": 0.0017404257454479318,
+    "d2": 0.0018962809639121215,
+    "mass": 0.0026934247765485336,
+    "pt": 0.006348036863003742,
+    "tau1": 0.00275212513503891,
+    "tau2": 0.002808102806840899,
+    "tau3": 0.002962019818921387,
+    "tau21": 22.731407951581424,
+    "tau32": 11.218534827204026,
+    "ecf2": 0.0017003653123164723,
+    "ecf3": 0.00010382303680264838,
+    "d2_obs": 0.1651665285183529
+  },
+  "method": "time_cond",
+  "train_time_s": 186.77130222320557,
+  "sample_time_s": 4.192873954772949,
+  "hyperparameters": {
+    "max_depth": 7,
+    "n_estimators": 400,
+    "eta": 0.02,
+    "n_timesteps": 30,
+    "duplicate_k": 20,
+    "solver": "euler",
+    "solver_steps": 30,
+    "feature_interactions": false,
+    "cholesky": true,
+    "cholesky_alpha": 0.3
+  }
+}

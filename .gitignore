@@ -24,3 +24,8 @@ __pycache__/
 
 # uv
 uv.lock
+
+# LLM
+CLAUDE.md
+.claude/
+.codex

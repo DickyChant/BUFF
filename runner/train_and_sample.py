@@ -555,6 +555,58 @@ def train_time_conditioned(X_scaled, y, duplicate_K, n_t, flow_type, sigma,
     return models, input_dim
 
 
+def train_reflow_student(X0, X1_teacher, y, y_uniques, args,
+                         predict_endpoint=False, feature_interactions=False):
+    """Train a 1-step student on teacher-generated endpoint pairs.
+
+    The student operates directly in the scaled BUFF model space.
+    When predict_endpoint=False, it learns the displacement X1 - X0 so a
+    single Euler update with h=1 lands on the teacher endpoint.
+    """
+    c = X0.shape[1]
+    target = X1_teacher if predict_endpoint else (X1_teacher - X0)
+
+    models = {}
+    colsample = getattr(args, 'colsample_bytree', 1.0)
+
+    for ji, label in enumerate(y_uniques):
+        mask = (y == label)
+        X_masked = X0[mask, :]
+        y_masked = target[mask, :]
+
+        if feature_interactions:
+            X_masked, n_interact = _make_feature_interactions(X_masked)
+            print(f"  Class {label}: added {n_interact} interaction features "
+                  f"→ {X_masked.shape[1]} input dims")
+
+        print(f"  Class {label}: distilling {X_masked.shape[0]} pairs, "
+              f"{X_masked.shape[1]} input features → {y_masked.shape[1]} outputs")
+
+        model = xgb.XGBRegressor(
+            n_estimators=args.n_estimators,
+            objective="reg:squarederror",
+            eta=args.eta,
+            max_depth=args.max_depth,
+            n_jobs=args.n_threads,
+            reg_lambda=args.reg_lambda,
+            reg_alpha=args.reg_alpha,
+            subsample=args.subsample,
+            colsample_bytree=colsample,
+            seed=666,
+            tree_method=args.tree_method,
+            device=getattr(args, 'device', 'cpu'),
+            multi_strategy="multi_output_tree",
+        )
+        model.fit(X_masked, y_masked)
+        models[ji] = model
+
+    input_dim = c
+    if feature_interactions:
+        input_dim = c + c * (c - 1) // 2
+
+    return models, input_dim
+
+
 def build_model_fn_time_conditioned(models, y_uniques, c, n_t, mask_y,
                                      feature_interactions=False):
     """Model function for time-conditioned single-model inference.
@@ -577,6 +629,36 @@ def build_model_fn_time_conditioned(models, y_uniques, c, n_t, mask_y,
         for j, label in enumerate(y_uniques):
             m = mask_y[label]
             out[m, :] = models[j].predict(xt_with_t[m, :])
+        return out.reshape(-1)
+
+    return partial(my_model, mask_y=mask_y)
+
+
+def build_model_fn_one_step(models, y_uniques, c, mask_y,
+                            predict_endpoint=False, feature_interactions=False):
+    """Model function for a distilled 1-step student.
+
+    The returned callable matches the BUFF ODE-solver interface, so a
+    one-step Euler solve (`N=2`) can reuse the existing sampling code.
+    """
+    def my_model(t, xt, mask_y=None):
+        del t  # The distilled student is time-independent.
+        xt = xt.reshape(xt.shape[0] // c, c)
+        out = np.zeros(xt.shape)
+
+        X_eval = xt
+        if feature_interactions:
+            X_eval, _ = _make_feature_interactions(X_eval)
+
+        for j, label in enumerate(y_uniques):
+            m = mask_y[label]
+            if not np.any(m):
+                continue
+            pred = models[j].predict(X_eval[m, :])
+            if predict_endpoint:
+                out[m, :] = pred - xt[m, :]
+            else:
+                out[m, :] = pred
         return out.reshape(-1)
 
     return partial(my_model, mask_y=mask_y)
@@ -758,6 +840,37 @@ def sample(regr, y_uniques, y_probs, c, n_t, scaler, X_min, X_max, solver, solve
     solution = solution.reshape(n_samples, c)
 
     # Inverse MinMax, clip to data range
+    solution = scaler.inverse_transform(solution)
+    solution = np.clip(solution, X_min, X_max)
+
+    return solution, label_y
+
+
+def sample_one_step(models, y_uniques, y_probs, c, scaler, X_min, X_max,
+                    n_samples, predict_endpoint=False, feature_interactions=False):
+    """Generate samples from a distilled 1-step student."""
+    x0 = np.random.normal(size=(n_samples, c))
+
+    label_y = y_uniques[np.argmax(
+        np.random.multinomial(1, y_probs, size=n_samples), axis=1
+    )]
+    mask_y_fake = {}
+    for label in y_uniques:
+        mask_y_fake[label] = (label_y == label)
+
+    model_fn = build_model_fn_one_step(
+        models, y_uniques, c, mask_y_fake,
+        predict_endpoint=predict_endpoint,
+        feature_interactions=feature_interactions,
+    )
+
+    print(f"Sampling {n_samples} events with one-step Euler...")
+    t0 = time.time()
+    solution = euler_solve(x0=x0.reshape(-1), my_model=model_fn, N=2)
+    elapsed = time.time() - t0
+    print(f"Sampling done in {elapsed:.3f}s ({elapsed / n_samples * 1000:.3f} ms/event)")
+
+    solution = solution.reshape(n_samples, c)
     solution = scaler.inverse_transform(solution)
     solution = np.clip(solution, X_min, X_max)
 
