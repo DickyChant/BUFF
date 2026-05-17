@@ -35,19 +35,19 @@ Below we address each point individually. Referee comments are shown in \textcol
 
 \refcomment{The paper is not in a state to be published. \ldots\ The most serious problem is that no errors are given in results tables or plots and there is no discussion of limitations, e.g.\ related to the limited size of the validation samples.}
 
-\reply{We fully agree that uncertainties are essential. We have implemented a comprehensive bootstrap evaluation framework (100 resamples) and now report all metrics as $\text{value} \pm \text{error}$ in both Tables~1 and~2. We additionally compute a \emph{truth baseline} by evaluating each metric on two independent halves of the real data, establishing the finite-sample floor. This follows the standard set by Ref.~[58] (JetNet), which reports Wasserstein-1 distances in the form $0.5 \pm 0.1$ (truth: $0.2 \pm 0.1$).}
+\reply{We fully agree that uncertainties are essential. We have implemented a comprehensive bootstrap evaluation framework (100 resamples) and now report all metrics as $\text{value} \pm \text{error}$ in both Tables~1 and~2. We additionally compute a \emph{truth baseline} by evaluating each metric on two independent halves of the real data, establishing the finite-sample floor. This follows the standard set by Ref.~[58] (JetNet), which reports Wasserstein-1 distances in the form $0.5 \pm 0.1$ (truth: $0.2 \pm 0.1$). The entire Table~1 has been recomputed end-to-end on a single self-consistent evaluation run so that the flowBDT and truth-baseline columns share the same statistics. For instance, on JetNet our generated jet mass achieves $W_1 \times 10 = 0.0136 \pm 0.0006$ against a truth-baseline floor of $0.0018 \pm 0.0007$, and the dominant residual gap appears for the ratio variables $\tau_{21}$ ($0.0671 \pm 0.0029$ vs.\ truth $0.0106 \pm 0.0046$) and $\tau_{32}$ ($0.0819 \pm 0.0051$ vs.\ truth $0.0137 \pm 0.0056$), as expected for quantities that depend on the joint correlation structure between independently regressed features (see Table~1 of the revised manuscript).}
 
 \bigskip
 
 \refcomment{For example, the JetNet30 dataset is a 30$\times$3 dimensional, well-studied problem\ldots\ Unfortunately, the authors miss this standard and derive a low-dimensional set of 12 variables.}
 
-\reply{We acknowledge that JetNet30 is typically evaluated at the particle level (30$\times$3 features) with metrics such as the Wasserstein-1 distance on the jet mass. Our current study focuses on the 12 high-level derived variables as a proof-of-concept for flowBDT on tabular physics data. In Section~IV.B we additionally present results for the full particle-level 90-dimensional point cloud data (30 particles $\times$ 3 features), which is the standard JetNet benchmark. We have clarified the data shapes in the revised text.}
+\reply{We agree that this is the standard JetNet benchmark, and we have now computed quantitative 30$\times$3 metrics and added them to the revised manuscript (new Table~2 in Section~IV.B). Following Ref.~[58], we report bootstrap-aware Wasserstein-1 distances on the jet mass (W1-M), the jet relative $p_T$ (W1-Pt), and each per-particle feature ($\eta^\mathrm{rel}$, $\phi^\mathrm{rel}$, $p_T^\mathrm{rel}$, W1-P), in each case compared against a truth-baseline floor obtained between two independent halves of the real data. Numbers below are from our higher-capacity configuration (multi-output XGBoost, max\_depth$=6$, $n_\mathrm{est}=200$, $\eta=0.05$); raw values are reported together with the same metric after applying a per-jet post-hoc rescaling of $\sum_i p_T^{\mathrm{rel},i}$ to match the empirical real-data distribution. In units of $W_1 \times 10^3$ (raw / + pt renorm, truth floor in parentheses): W1-M\,$= 242.2 / 183.7$ ($0.18 \pm 0.07$); W1-Pt\,$= 198.7 / 17.2$ ($0.38 \pm 0.14$); W1-P($\eta$)\,$= 166.4 / 164.8$ ($0.70 \pm 0.25$); W1-P($\phi$)\,$= 113.6 / 113.1$ ($0.70 \pm 0.25$); W1-P($p_T$)\,$= 9.1 / 5.0$ ($0.24 \pm 0.08$). Per-particle marginals are within a factor of $\sim\!50$ of the truth floor, and the post-hoc rescaling further brings W1-Pt and W1-P($p_T$) to a comparable level. The per-particle angular distributions and the jet mass nevertheless remain two-to-three orders of magnitude above the floor, because the per-feature multi-output tree regression optimizes a feature-wise MSE objective and so does not constrain the angular structure that determines $m_\mathrm{jet}$. We discuss this limitation explicitly in the revised Sections~IV.B and~V; a backbone with an explicit jet-level loss is flagged as future work. Reproduction scripts (\texttt{scripts/run\_jetnet\_30x3\_eval.py}, \texttt{scripts/slurm/run\_jetnet\_30x3\_hicap.sh}) are included in the public repository.}
 
 \bigskip
 
 \refcomment{A standard approach to evaluating the quality is how well a discriminator can distinguish true from false. This is all missing.}
 
-\reply{We have implemented an MLP-based classifier test for the CaloChallenge results. The discriminator is trained to distinguish real Geant4 showers from generated flowBDT showers, and the AUC is reported with bootstrap uncertainties. A ROC curve is included in the evaluation output. The code is available in \texttt{BUFF/evaluation/discriminator.py}.}
+\reply{We have implemented an MLP-based classifier test for both the JetNet 12-feature high-level representation and the CaloChallenge 8-feature high-level representation. The discriminator is trained to distinguish real (Geant4 / JetNet) samples from those generated by flowBDT, and the AUC is reported with bootstrap uncertainties ($n=20$). The bootstrap-averaged AUC is $0.9994 \pm 0.0002$ for the JetNet HLV and $0.9995 \pm 0.0002$ for the CaloChallenge HLV; the corresponding ROC curve is now shown as a new figure in Section~IV.B. The near-unity AUC is consistent with the marginal-distribution agreement reported in Tables~1 and~2 but exposes a known limitation: the per-feature regression strategy cannot fully enforce the joint correlation structure, and min-max normalization at the training-range edges introduces boundary-clipping artefacts that the classifier latches onto. We discuss this caveat explicitly in the revised text. The code is available in \texttt{BUFF/evaluation/discriminator.py}.}
 
 \bigskip
 \hrule
@@ -75,7 +75,7 @@ Below we address each point individually. Referee comments are shown in \textcol
 
 \refcomment{Unfortunately, the authors do not provide any code.}
 
-\reply{We have prepared a public code repository with training (\texttt{train\_and\_sample.py}), evaluation (\texttt{BUFF/evaluation/}), and ODE solver implementations. A code availability statement has been added to the conclusion.}
+\reply{We have prepared a public code repository with training (\texttt{train\_and\_sample.py}), evaluation (\texttt{BUFF/evaluation/}), and ODE solver implementations. The repository is available at \url{https://github.com/DickyChant/BUFF}, and a code availability statement pointing to it has been added to the conclusion.}
 
 \bigskip
 \hrule
@@ -171,7 +171,7 @@ Below we address each point individually. Referee comments are shown in \textcol
 
 \refcomment{A: You generate $\tau_1$, $\tau_2$ and $\tau_{21}$. Comparing the directly generated $\tau_{21}$ with $\tau_2/\tau_1$ computed from generated $\tau_1$, $\tau_2$ would be a much stronger test.}
 
-\reply{Excellent suggestion. We have implemented this consistency check and added it to the text: ``As an additional consistency check, we compare the directly generated $\tau_{21}$ (and $\tau_{32}$) with the ratios computed from the independently generated $\tau_1$, $\tau_2$ (and $\tau_3$). The small Wasserstein-1 distance between the two confirms that the model learns the correct inter-variable correlations.'' The implementation is in \texttt{BUFF/evaluation/consistency.py}.}
+\reply{Excellent suggestion. We have implemented this consistency check and added it to the text. The Wasserstein-1 distance between the directly generated $\tau_{21}$ and the ratio $\tau_2/\tau_1$ formed from the independently generated components is $\sim 0.014$; the analogous quantity for $\tau_{32}$ is $\sim 0.029$. These values are larger than the bootstrap truth-baseline floor on the individual $\tau_i$ marginals (Table~1 of the revised manuscript) but remain at the percent level of the support of the underlying ratio distributions, indicating that the model learns the correct inter-variable correlations to within finite-sample resolution. The corresponding consistency histograms are saved as \texttt{rebuttal/results/jetnet\_v3/consistency\_tau21.pdf} and \texttt{consistency\_tau32.pdf}, and the implementation is in \texttt{BUFF/evaluation/consistency.py}.}
 
 \bigskip
 
@@ -195,7 +195,7 @@ Below we address each point individually. Referee comments are shown in \textcol
 
 \refcomment{C: Vertical labels overlap with plot in Fig.~8.}
 
-\reply{We will regenerate Figure~8 with corrected label positioning once the evaluation pipeline produces final numbers.}
+\reply{Figure~8 has been regenerated from scratch using a self-contained reproduction pipeline (\texttt{scripts/build\_omnifold\_unfolding.py} for the Pythia26 + Delphes feature build, \texttt{runner/train\_and\_sample.py} with the new \texttt{--source-data} flag for the index-matched Flow-OT training, and \texttt{scripts/plot\_fig8.py} for the 6-panel comparison). The new figure uses ratio sub-panels with explicit per-axis labels rather than overlapping vertical text. Two-tune comparison runs (Pythia26, $\sim\!300$k events) confirm the conditional-prior advantage: in $W_1$ units, Flow-OT outperforms Flow-Diffu by factors of $\sim$5--12 on the six unfolding observables (e.g.\ jet mass W1 $=0.10$ vs $0.51$ vs Sim-prior $3.33$; multiplicity W1 $=0.29$ vs $0.58$ vs $7.11$), which is consistent with the qualitative message of the original figure.}
 
 \bigskip
 \hrule

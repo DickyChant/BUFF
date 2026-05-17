@@ -72,6 +72,40 @@ High-level features (8 features): energy response, 5 layer fractions, depth, wid
 
 Note: CaloChallenge results use a simplified high-level representation (8 features extracted from 368 voxels). Full voxel-level generation and evaluation requires the complete preprocessing pipeline with geometry handling (`calo_utils.py`, `XMLHandler.py`).
 
+## Table 3 — JetNet 30x3 (particle-level, top jets)
+
+Standard JetNet benchmark metrics following Ref [58]: unbinned W1 on derived jet observables and per-particle features, with truth-baseline floors from independent halves of the real data. Generated 177,945 jets via `train_and_sample.py --multi-output --duplicate-k 20 --n-timesteps 30 --solver dopri5 --solver-steps 30` on the leading-30 particle representation (log pt_rel, eta_rel, phi_rel; 90 features total). Bootstrap n=100, per-particle subsample 200,000.
+
+### Headline (hicap config: depth=6, n_est=200, eta=0.05, multi-output)
+
+| Metric | flowBDT raw | flowBDT + pt-renorm | Truth baseline |
+|--------|-------------|---------------------|----------------|
+| W1-M (jet mass / pT_jet)    | 242.16 +/- 0.21 | 183.66 +/- 0.14 | 0.18 +/- 0.07 |
+| W1-Pt (sanity)              | 198.68 +/- 0.65 |  17.25 +/- 0.22 | 0.38 +/- 0.14 |
+| W1-P(eta_rel) per-particle  | 166.35 +/- 0.58 | 164.76 +/- 0.48 | 0.70 +/- 0.25 |
+| W1-P(phi_rel) per-particle  | 113.60 +/- 0.40 | 113.11 +/- 0.44 | 0.70 +/- 0.25 |
+| W1-P(pT_rel)  per-particle  |   9.07 +/- 0.20 |   4.97 +/- 0.11 | 0.24 +/- 0.08 |
+
+### Baseline (depth=4, n_est=100, eta=0.1) -- for comparison
+
+| Metric | flowBDT raw | flowBDT + pt-renorm | Truth baseline |
+|--------|-------------|---------------------|----------------|
+| W1-M (jet mass / pT_jet)    | 276.92 +/- 0.24 | 202.55 +/- 0.14 | 0.18 +/- 0.07 |
+| W1-Pt (sanity)              | 229.96 +/- 0.71 |  19.79 +/- 0.22 | 0.38 +/- 0.14 |
+| W1-P(eta_rel) per-particle  | 189.66 +/- 0.58 | 189.52 +/- 0.51 | 0.70 +/- 0.25 |
+| W1-P(phi_rel) per-particle  | 129.59 +/- 0.42 | 129.32 +/- 0.38 | 0.70 +/- 0.25 |
+| W1-P(pT_rel)  per-particle  |  10.70 +/- 0.17 |   5.98 +/- 0.11 | 0.24 +/- 0.08 |
+
+Hicap improves every metric by ~10-15% (15h 41min training vs 6h 23min baseline). The structural limitation (jet mass two orders of magnitude above truth floor) is not resolved by more capacity; closing the gap requires a backbone with an explicit jet-level loss term.
+
+Post-hoc renormalization: for each generated jet, the 30 generated pt_rel values are rescaled by a single factor so that their sum equals a sample drawn from the empirical real-data pt_sum distribution. This is a cheap fix for the most obvious failure mode (gen pt_sum std = 0.33 vs real 0.06). It collapses W1-Pt to within ~50x the floor and halves W1-P(pT). It does NOT improve W1-M materially because per-jet pt rescaling leaves m_jet / pT_jet unchanged in expectation; the remaining mass discrepancy is driven by the angular distribution and per-particle correlations.
+
+Note: Per-particle marginal distributions track the target reasonably well (within ~50x the finite-sample floor), but jet-level kinematics (mass, total pT) are three orders of magnitude above the floor. This is the per-feature regression failure mode: each of the 30 x 3 outputs is modelled independently, so the joint constraint sum_i pT_rel_i ~ 1 that defines the jet 4-momentum is not preserved. A multi-output tree backbone or an explicit jet-level loss is the natural follow-up (and the diagnostic for whether the limitation is fundamental or pipeline-level).
+
+Sanity check on generated samples:
+- Sum of generated pT_rel per jet: mean = 1.14, std = 0.33 (vs real: 1.00, std = 0.06)
+- Per-particle eta_rel/phi_rel means: track real to ~1e-3, indicating the marginals are not the failure mode
+
 ## How to Reproduce
 
 ```bash
@@ -96,4 +130,22 @@ uv run python -m BUFF.runner.train_and_sample \
     --solver dopri5 --solver-steps 30 \
     --output-dir results/calo_hlv/
 uv run python scripts/run_calo_hlv_eval.py
+
+# JetNet 30x3 particle-level (Table 3)
+sbatch scripts/slurm/run_jetnet_30x3.sh
+# Or step-by-step:
+python -m BUFF.scripts.build_jetnet_particle_kin \
+    --raw data/jetnet_raw/t.hdf5 \
+    --out data/jetnet/t_p30_kin.npy \
+    --n-leading 30
+python -m BUFF.runner.train_and_sample \
+    --data data/jetnet/t_p30_kin.npy \
+    --n-timesteps 30 --duplicate-k 20 --multi-output \
+    --flow-type icfm --solver dopri5 --solver-steps 30 \
+    --output-dir results/jetnet_30x3/
+python -m BUFF.scripts.run_jetnet_30x3_eval \
+    --real-hdf5 data/jetnet_raw/t.hdf5 \
+    --gen-npy   results/jetnet_30x3/generated_samples.npy \
+    --gen-log-pt \
+    --out-dir   rebuttal/results/jetnet_30x3/
 ```

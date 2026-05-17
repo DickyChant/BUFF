@@ -215,6 +215,14 @@ def parse_args():
         "--real-data-for-cholesky", type=str, default=None,
         help="Path to real data for Cholesky correction (default: use training data)",
     )
+    p.add_argument(
+        "--source-data", type=str, default=None,
+        help="Optional path to source (x0) data .npy of the same shape as --data. "
+             "When provided, the base distribution is sampled (with replacement) from this "
+             "file instead of N(0, I); paired by index against the target. Use this for "
+             "OT-style unfolding where the source is detector-level and the target is "
+             "particle-level. The source is scaled with the SAME min-max scaler as the target.",
+    )
     return p.parse_args()
 
 
@@ -266,17 +274,32 @@ def prepare_scaling(X, y, duplicate_K):
 
 
 def train_batched(X_scaled, y, duplicate_K, n_t, flow_type, sigma, mask_y,
-                  y_uniques, c, args):
+                  y_uniques, c, args, source_scaled=None):
     """Train models one timestep at a time to avoid OOM.
 
     Instead of pre-allocating all (n_t, N*K, d) arrays, builds flow pairs
     for a single timestep, trains its regressors, then discards the data.
     Memory: O(N*K*d) instead of O(n_t*N*K*d).
+
+    If ``source_scaled`` is provided (same shape as ``X_scaled``), it is
+    used as the base distribution x0 instead of Gaussian noise, with
+    index-matched pairing (x0[i] paired with x1[i]).  This implements the
+    Flow-OT / conditional-generation case where the source is detector-level
+    and the target is particle-level.
     """
     FM = build_flow_matcher(flow_type, sigma)
     t_levels = np.linspace(1e-3, 1, num=n_t)
 
     X1 = np.tile(X_scaled, (duplicate_K, 1))
+    if source_scaled is not None:
+        if source_scaled.shape != X_scaled.shape:
+            raise ValueError(
+                f"source_scaled shape {source_scaled.shape} must match "
+                f"target X_scaled shape {X_scaled.shape}"
+            )
+        X0_fixed = np.tile(source_scaled, (duplicate_K, 1))
+    else:
+        X0_fixed = None
 
     multi_output = args.multi_output
 
@@ -288,8 +311,10 @@ def train_batched(X_scaled, y, duplicate_K, n_t, flow_type, sigma, mask_y,
         regr = [[[None for _ in range(c)] for _ in range(n_t)] for _ in y_uniques]
 
     for i in trange(n_t, desc="Training timesteps"):
-        # Fresh noise each timestep
-        X0 = np.random.normal(size=X1.shape)
+        if X0_fixed is not None:
+            X0 = X0_fixed  # index-matched conditional source (Flow-OT)
+        else:
+            X0 = np.random.normal(size=X1.shape)
 
         t = torch.ones(X0.shape[0]) * t_levels[i]
         _, xt, ut = FM.sample_location_and_conditional_flow(
@@ -810,9 +835,20 @@ def build_model_fn(regr, y_uniques, c, n_t, mask_y, multi_output=False):
     return partial(my_model, mask_y=mask_y)
 
 
-def sample(regr, y_uniques, y_probs, c, n_t, scaler, X_min, X_max, solver, solver_steps, n_samples, multi_output=False):
-    """Generate samples from trained flowBDT models."""
-    x0 = np.random.normal(size=(n_samples, c))
+def sample(regr, y_uniques, y_probs, c, n_t, scaler, X_min, X_max, solver, solver_steps, n_samples, multi_output=False, source_scaled=None):
+    """Generate samples from trained flowBDT models.
+
+    If ``source_scaled`` is provided, the initial condition x0 is drawn (with
+    replacement) from ``source_scaled`` instead of from ``N(0, I)``.  Use this
+    for Flow-OT-style conditional generation where the prior is, e.g., a
+    detector-level distribution.
+    """
+    if source_scaled is not None:
+        rng = np.random.RandomState(None)
+        idx = rng.randint(0, len(source_scaled), size=n_samples)
+        x0 = source_scaled[idx]
+    else:
+        x0 = np.random.normal(size=(n_samples, c))
 
     # Random class labels
     label_y = y_uniques[np.argmax(
@@ -907,9 +943,23 @@ def main():
     X_max = X.max(axis=0)
     b, c = X.shape
 
-    # Shuffle
+    # Optional conditional source (Flow-OT-style: x0 = detector, x1 = particle)
+    source_raw = None
+    if getattr(args, "source_data", None):
+        print(f"Loading conditional source from {args.source_data} ...")
+        source_raw, _ = load_data(args.source_data, features)
+        if source_raw.shape != X_raw.shape:
+            raise ValueError(
+                f"--source-data shape {source_raw.shape} must match --data shape {X_raw.shape}"
+            )
+        if args.strip_derived and source_raw.shape[1] == 12:
+            source_raw, _ = strip_derived_features(source_raw)
+
+    # Shuffle target (and source the same way, to preserve pairing)
     perm = np.random.permutation(b)
     X, y = X[perm], y[perm]
+    if source_raw is not None:
+        source_raw = source_raw[perm]
 
     # Scale and prepare
     print("Preparing scaling...")
@@ -917,13 +967,22 @@ def main():
         X, y, args.duplicate_k
     )
 
+    # Apply the *same* scaler to the conditional source so x0 and x1 share scale
+    source_scaled = None
+    if source_raw is not None:
+        source_scaled = scaler.transform(source_raw).astype(X_scaled.dtype)
+        print(f"  Source scaled: shape={source_scaled.shape}  "
+              f"range=[{source_scaled.min():.3f}, {source_scaled.max():.3f}]")
+
     # Train (batched — one timestep at a time, 30x less memory)
     mode = "multi-output" if args.multi_output else "per-feature"
-    print(f"Training XGBoost regressors ({mode}, {args.flow_type})...")
+    src_mode = "Flow-OT (source-conditioned)" if source_scaled is not None else "Flow-Diffu (Gaussian prior)"
+    print(f"Training XGBoost regressors ({mode}, {args.flow_type}, {src_mode})...")
     t0 = time.time()
     regr = train_batched(
         X_scaled, y, args.duplicate_k, args.n_timesteps,
         args.flow_type, args.sigma, mask_y, y_uniques, c, args,
+        source_scaled=source_scaled,
     )
     print(f"Training done in {time.time() - t0:.1f}s")
 
@@ -943,6 +1002,7 @@ def main():
         regr, y_uniques, y_probs, c, args.n_timesteps,
         scaler, X_min, X_max, args.solver, args.solver_steps, n_samples,
         multi_output=args.multi_output,
+        source_scaled=source_scaled,
     )
 
     # Cholesky correlation correction (applied BEFORE restoring derived features

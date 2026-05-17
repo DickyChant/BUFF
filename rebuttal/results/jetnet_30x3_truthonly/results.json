@@ -1,0 +1,32 @@
+{
+  "config": {
+    "real_hdf5": "/pscratch/sd/s/sqian/buff_f2d2/data/jetnet_raw/t.hdf5",
+    "gen_npy": null,
+    "n_jets_used": 20000,
+    "n_bootstrap": 30,
+    "per_particle_subsample": 50000,
+    "seed": 42
+  },
+  "metrics": {
+    "jet_mass_rel": {
+      "truth_mean": 0.0005763843668100055,
+      "truth_std": 0.0002241959101831265
+    },
+    "jet_pt_rel": {
+      "truth_mean": 0.0012437046987838257,
+      "truth_std": 0.0004610937187457532
+    },
+    "particle_eta_rel": {
+      "truth_mean": 0.0012364785722017771,
+      "truth_std": 0.0004037599400687766
+    },
+    "particle_phi_rel": {
+      "truth_mean": 0.0014659992949505108,
+      "truth_std": 0.00047939544324962534
+    },
+    "particle_pt_rel": {
+      "truth_mean": 0.00046072822951160816,
+      "truth_std": 0.0001427252326647656
+    }
+  }
+}

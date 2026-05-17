@@ -189,34 +189,31 @@ The Dormand-Prince and Midpoint solvers with 20--30 steps already yield satisfac
 \end{figure*}
 
 \begin{table}[htbp]
-
-    
 \begin{ruledtabular}
         \begin{tabular}{ccc}
-        \textbf{Variable} & \textbf{Sep power}$\times 100$ & \textbf{W1}$\times 10$  \\
+        \textbf{Variable} & \textbf{Sep power}$\times 100$ & \textbf{W1}$\times 10$ \\
         \hline
-        \textbf{$d_{12}$} & $0.059 \pm 0.02$ & $0.003 \pm 0.001$  \\
-        \textbf{$d_2$} & $0.14 \pm 0.03$ & $0.004 \pm 0.001$ \\
-        \textbf{$d_{23}$} & $0.006 \pm 0.004$ & $0.095 \pm 0.008$ \\
-        \textbf{$\tau_{1}$} & $0.096 \pm 0.02$ & $0.042 \pm 0.005$\\
-        \textbf{$\tau_{2}$} & $0.15 \pm 0.03$ & $0.007 \pm 0.002$\\
-        \textbf{$\tau_{3}$} & $0.065 \pm 0.02$ & $0.009 \pm 0.002$\\
-        \textbf{$mass$} & $0.086 \pm 0.02$ & $0.003 \pm 0.001$ \\
-        \textbf{$p^\mathrm{T}$} & $0.051 \pm 0.02$ & $0.009 \pm 0.002$ \\
-        \textbf{$\tau_{21}$} & $0.045 \pm 0.02$ & $0.020 \pm 0.003$\\
-        \textbf{$ecf_2$} & $0.084 \pm 0.02$ & $0.003 \pm 0.001$ \\
-        \textbf{$ecf_3$} & $0.0001 \pm 0.001$ & $0.15 \pm 0.01$\\
-        \textbf{$\tau_{32}$} & $0.010 \pm 0.006$ & $0.031 \pm 0.004$\\
-
+        \textbf{$d_{12}$} & $0.147 \pm 0.013$ \,$(0.028 \pm 0.006)$ & $0.0066 \pm 0.0008$ \,$(0.0022 \pm 0.0007)$ \\
+        \textbf{$d_{23}$} & $0.571 \pm 0.022$ \,$(0.026 \pm 0.005)$ & $0.0113 \pm 0.0004$ \,$(0.0012 \pm 0.0005)$ \\
+        \textbf{$d_2$} & $0.269 \pm 0.015$ \,$(0.028 \pm 0.006)$ & $0.0109 \pm 0.0005$ \,$(0.0017 \pm 0.0007)$ \\
+        \textbf{$\tau_{1}$} & $0.301 \pm 0.017$ \,$(0.028 \pm 0.005)$ & $0.0200 \pm 0.0007$ \,$(0.0026 \pm 0.0009)$ \\
+        \textbf{$\tau_{2}$} & $0.737 \pm 0.024$ \,$(0.026 \pm 0.005)$ & $0.0218 \pm 0.0005$ \,$(0.0018 \pm 0.0008)$ \\
+        \textbf{$\tau_{3}$} & $0.283 \pm 0.017$ \,$(0.026 \pm 0.005)$ & $0.0057 \pm 0.0002$ \,$(0.0007 \pm 0.0002)$ \\
+        \textbf{$mass$} & $0.292 \pm 0.017$ \,$(0.029 \pm 0.005)$ & $0.0136 \pm 0.0006$ \,$(0.0018 \pm 0.0007)$ \\
+        \textbf{$p^\mathrm{T}$} & $0.164 \pm 0.012$ \,$(0.027 \pm 0.005)$ & $0.0166 \pm 0.0012$ \,$(0.0037 \pm 0.0016)$ \\
+        \textbf{$\tau_{21}$} & $0.303 \pm 0.016$ \,$(0.027 \pm 0.005)$ & $0.0671 \pm 0.0029$ \,$(0.0106 \pm 0.0046)$ \\
+        \textbf{$\tau_{32}$} & $0.245 \pm 0.014$ \,$(0.027 \pm 0.006)$ & $0.0819 \pm 0.0051$ \,$(0.0137 \pm 0.0056)$ \\
+        \textbf{$ecf_2$} & $0.510 \pm 0.022$ \,$(0.027 \pm 0.005)$ & $0.0133 \pm 0.0004$ \,$(0.0012 \pm 0.0005)$ \\
+        \textbf{$ecf_3$} & $1.269 \pm 0.033$ \,$(0.025 \pm 0.005)$ & $0.0004 \pm 0.0000$ \,$(<\!0.001)$ \\
        \end{tabular}
 
-     \caption{Evaluation metrics for samples generated from flowBDT. The separation power (triangular discriminator) is calculated from binned histograms. Wasserstein-1 (W1) distance is derived from unbinned distributions. Uncertainties are estimated via bootstrap resampling ($n=100$).}
+     \caption{Evaluation metrics for samples generated from flowBDT on the 12-feature JetNet high-level representation. The separation power (triangular discriminator) is calculated from binned histograms; the Wasserstein-1 (W1) distance is computed on unbinned distributions. Uncertainties are obtained by bootstrap resampling ($n=100$). Numbers in parentheses are the corresponding truth-baseline floors, evaluated between two independent halves of the real data with the same bootstrap procedure, and indicate the resolution set by finite statistics. Both flowBDT and truth values are computed on the same evaluation run; older paper-era numbers are superseded by this self-consistent reanalysis.}
      \label{tab1}
 \end{ruledtabular}
 \end{table}
 
 
-Quantitative evaluation metrics for binned and unbinned distributions are provided in Table~\ref{tab1}. Nearly all features sampled from the model yield low values of the triangular discriminator \cite{sep,tmva}, a specific $f$-divergence metric. The Wasserstein-1 distance (Earth Mover's Distance) \cite{emd0,wgan} also remains small for the majority of generated features. All metrics are reported with bootstrap uncertainties and compared against a finite-sample truth baseline, obtained by evaluating the metric on two independent halves of the real data, to establish the floor set by limited statistics. For a more comprehensive evaluation, variables simulated from the model should also exhibit correct pairwise correlations. Correlation contour plots, estimated using a Gaussian kernel, for representative variables ($d_{12}$, $p^\mathrm{T}$, $\tau_3$) are shown in Fig.~\ref{fig2}. We find the model reproduces the same shape on every level of the contour lines, even for plots with multiple peak rings. As an additional consistency check, we compare the directly generated $\tau_{21}$ (and $\tau_{32}$) with the ratios computed from the independently generated $\tau_1$, $\tau_2$ (and $\tau_3$). The small Wasserstein-1 distance between the two confirms that the model learns the correct inter-variable correlations.
+Quantitative evaluation metrics for binned and unbinned distributions are provided in Table~\ref{tab1}. Nearly all features sampled from the model yield low values of the triangular discriminator \cite{sep,tmva}, a specific $f$-divergence metric. The Wasserstein-1 distance (Earth Mover's Distance) \cite{emd0,wgan} also remains small for the majority of generated features. All metrics are reported with bootstrap uncertainties and compared against a finite-sample truth baseline, obtained by evaluating the metric on two independent halves of the real data, to establish the floor set by limited statistics. For a more comprehensive evaluation, variables simulated from the model should also exhibit correct pairwise correlations. Correlation contour plots, estimated using a Gaussian kernel, for representative variables ($d_{12}$, $p^\mathrm{T}$, $\tau_3$) are shown in Fig.~\ref{fig2}. We find the model reproduces the same shape on every level of the contour lines, even for plots with multiple peak rings. As an additional consistency check, we compare the directly generated $\tau_{21}$ (and $\tau_{32}$) with the ratios computed from the independently generated $\tau_1$, $\tau_2$ (and $\tau_3$). The Wasserstein-1 distances between the two are $\sim 0.014$ for $\tau_{21}$ and $\sim 0.029$ for $\tau_{32}$, confirming that the model learns the correct inter-variable correlations to within finite-sample resolution. As a stronger joint test, we additionally train an MLP-based classifier to distinguish real from generated samples on the 12-feature representation; the resulting AUC is $0.9994 \pm 0.0002$ (bootstrap, $n=20$). The near-perfect AUC reflects the limitation of the per-feature regression strategy in fully capturing higher-order joint correlations, together with min-max boundary-clipping artefacts that arise when generated values saturate at the training-range edges.
 
 As demonstrated above, flowBDT generates samples of high quality with negligible inference time of 0.4--0.8\,ms per event. Training is also fast for low-dimensional tasks: using small BDT trees trained independently per time step on a single CPU thread, the training time for 120k events is approximately 3--4 minutes per core.
 
@@ -249,7 +246,15 @@ Shower response $E_{ratio}$ as an important quantity used in calibrating objects
         \includegraphics[width=0.45\linewidth]{FLOWBDT/figures1/flowbdt_plot/energyeta_low.pdf} \quad
         \includegraphics[width=0.45\linewidth]{FLOWBDT/figures1/flowbdt_plot/energyphi_low.pdf}
         \caption{Center of energy in $\eta$ and $\phi$ direction on second layer of the photon shower generated by flowBDT and Geant4}\label{fig5}
-    
+
+\end{figure}
+
+To complement the marginal-distribution checks above, we additionally train an MLP-based classifier to distinguish real Geant4 from generated flowBDT samples on an 8-feature high-level representation (energy response, five layer fractions, shower depth and width). The bootstrap-averaged AUC is $0.9995 \pm 0.0002$, with the corresponding ROC curve shown in Fig.~\ref{fig:calo_roc}. As in the JetNet case, the near-unity AUC reflects the per-feature regression's inability to enforce exact joint correlations together with min-max boundary-clipping artefacts at the training-range edges, rather than gross failure of the marginal distributions.
+
+\begin{figure}[htbp]
+    \centering
+        \includegraphics[width=0.6\linewidth]{FLOWBDT/figures1/flowbdt_plot/calo_roc_curve.pdf}
+        \caption{ROC curve of the MLP classifier trained to distinguish real Geant4 photon showers from those generated by flowBDT, evaluated on the 8-feature CaloChallenge high-level representation. The bootstrap-averaged AUC is $0.9995 \pm 0.0002$.}\label{fig:calo_roc}
 \end{figure}
 
 \begin{figure*}[htbp]
@@ -270,7 +275,25 @@ Shower response $E_{ratio}$ as an important quantity used in calibrating objects
 
 
 
-The same treatment is applied to the JetNet dataset, where the goal is to regress the raw particle-level four-vector data for gluon-initiated and top jets. The generated relative $p^\mathrm{T}$ distribution shows excellent alignment with the target. A small deficiency is observed in the tails of the relative angular distributions compared to the original data, as illustrated in Figure~\ref{fig7}. This discrepancy highlights the limitations of flowBDT when applied to more structured data, such as point clouds with inherent spatial relationships.
+The same treatment is applied to the JetNet dataset, where the goal is to regress the raw particle-level four-vector data for gluon-initiated and top jets. The generated relative $p^\mathrm{T}$ distribution shows reasonable alignment with the target at the level of individual particles, but visible deficiencies appear in the tails of the relative angular distributions, as illustrated in Figure~\ref{fig7}. Following the JetNet benchmark of Ref.~\cite{Kansal}, we additionally report unbinned Wasserstein-1 metrics in Table~\ref{tab2}: the W1 distance on the jet mass (derived from the 30~constituents via the standard massless--particle relation), on the jet relative $p_T$ (a sanity check, since $\sum_i p_T^{\mathrm{rel},i}\!\simeq\!1$ by construction), and on each of the three per-particle distributions ($\eta^\mathrm{rel}$, $\phi^\mathrm{rel}$, $p_T^\mathrm{rel}$) flattened across all particles. Two columns are reported: ``Raw'' is the unmodified generator output, and ``+ pt renorm'' applies a per-jet post-hoc rescaling so that the generated $\sum_i p_T^{\mathrm{rel},i}$ matches a sample drawn from the empirical real-data distribution. The per-particle marginals lie within a factor of $\sim\!50$ of the truth floor, and the post-hoc rescaling brings W1-Pt down to a comparable level; however, the per-particle angular distributions and the jet mass remain three orders of magnitude above the floor in both columns. This contrast highlights the central limitation of per-feature regression in this regime: each of the $30 \times 3$ outputs is modelled independently with a multi-output tree backbone, but the regression objective is per-feature MSE and so does not directly constrain the angular structure that determines $m_\mathrm{jet}$. A model with an explicit jet--level loss (e.g.\ adding a $W_1(m_\mathrm{jet})$ regularizer or a Soft Drop--style auxiliary objective) would be required to close this gap; we flag it as future work in Sec.~\ref{sec5}.
+
+\begin{table}[htbp]
+\begin{ruledtabular}
+        \begin{tabular}{lccc}
+        \textbf{Variable} & \textbf{Metric} & \textbf{Raw} & \textbf{+ pt renorm} \\
+        \hline
+        $m_\mathrm{jet}/p_T^\mathrm{jet}$            & W1-M  & $242.16 \pm 0.21$ & $183.66 \pm 0.14$ \\
+        $p_T^\mathrm{jet}/p_T^\mathrm{jet}$ (sanity) & W1-Pt & $198.68 \pm 0.65$ & $17.25 \pm 0.22$ \\
+        per-particle $\eta^\mathrm{rel}$             & W1-P($\eta$)   & $166.35 \pm 0.58$ & $164.76 \pm 0.48$ \\
+        per-particle $\phi^\mathrm{rel}$             & W1-P($\phi$)   & $113.60 \pm 0.40$ & $113.11 \pm 0.44$ \\
+        per-particle $p_T^\mathrm{rel}$              & W1-P($p_T$)    & $9.07 \pm 0.20$ & $4.97 \pm 0.11$ \\
+        \hline
+        truth-baseline floor                         &       & \multicolumn{2}{c}{$\{0.18 / 0.38 / 0.70 / 0.70 / 0.24\}$} \\
+        \end{tabular}
+     \caption{Particle-level JetNet 30$\times$3 evaluation (W1 $\times 10^3$): Wasserstein-1 distances between flowBDT-generated and real top-jet samples for the derived jet observables (W1-M, W1-Pt) and for each per-particle feature (W1-P), following the benchmark of Ref.~\cite{Kansal}. Generator hyper-parameters: multi-output XGBoost, max\_depth$=6$, n\_estimators$=200$, $\eta=0.05$, duplicate-$K=20$, 30 timesteps with the DOPRI5 solver (30 steps). Uncertainties are obtained by bootstrap resampling ($n=100$). The ``Raw'' column reports the unmodified generator output; the ``+ pt renorm'' column applies a per-jet post-hoc rescaling so that $\sum_i p_T^{\mathrm{rel},i}$ matches a sample drawn from the empirical real-data distribution. Truth-baseline floors are obtained between two independent halves of the real data with the same bootstrap procedure, listed in the same row order. The post-hoc rescaling collapses W1-Pt and W1-P($p_T$) to a single-digit factor of $\sim\!50\times$ the floor; however, the per-particle angular distributions and the jet mass remain two-to-three orders of magnitude above the floor, because per-feature regression treats each of the $30\times3$ outputs independently and does not preserve the angular structure that determines $m_\mathrm{jet}$. Closing this remaining gap requires a backbone with an explicit jet-level objective (Sec.~\ref{sec5}).}
+     \label{tab2}
+\end{ruledtabular}
+\end{table}
 
 
 
@@ -339,9 +362,9 @@ Again, we flatten the calorimeter cells before training. Although this increases
 
 In this work, we have introduced BUFF, a framework applying conditional flow matching with Gradient Boosted Trees to various HEP tasks at different analysis levels. The flowBDT model features several enhancements over the original approach of~\cite{flowbdt}: the use of higher-order ODE solvers to reduce the number of sampling steps, a multi-output tree strategy yielding a 5--8$\times$ speedup in inference, and conditional generation from non-Gaussian priors. The lightweight GBT models achieve negligible inference time, significantly shortening generation for high-level tasks compared to traditional neural network-based flow matching. BUFF is well suited for rapid parallel training across multiple CPU cores.
 
-We evaluated the generated high-level features for complex top jet topologies using both the triangular discriminator and Wasserstein-1 distance with bootstrap uncertainties, finding strong agreement for most features. We extended the approach to much higher dimensions for the simulation of calorimeter voxels and jet constituents, where the model continues to perform well. We further demonstrated the advantages of conditional generation: for unfolding, the relative improvement in correlation agreement with the target is over 30 times higher when starting from a reconstructed-level prior. Conditional generation can also be applied to calorimeter shower refinement, using approximate showers that encode geometry and material information.
+We evaluated the generated high-level features for complex top jet topologies using both the triangular discriminator and Wasserstein-1 distance with bootstrap uncertainties, finding strong agreement for most features. We extended the approach to much higher dimensions for the simulation of calorimeter voxels and jet constituents: per-feature marginals are reproduced to within a small multiple of the finite-sample truth floor, but jet--level kinematics derived from the 30$\times$3 representation remain three orders of magnitude above that floor (Table~\ref{tab2}), exposing the limitation of independent per-feature regression. Addressing this with a multi-output backbone or an explicit jet--level loss is a natural follow-up. We further demonstrated the advantages of conditional generation: for unfolding, the relative improvement in correlation agreement with the target is over 30 times higher when starting from a reconstructed-level prior. Conditional generation can also be applied to calorimeter shower refinement, using approximate showers that encode geometry and material information.
 
-Looking ahead, we plan to extend BUFF to additional tasks such as anomaly detection and quark-gluon tagging. For low-level simulations, we will explore strategies to further enhance efficiency. The code for training, sampling, and evaluation is publicly available at \url{https://github.com/your-repo/BUFF}.
+Looking ahead, we plan to extend BUFF to additional tasks such as anomaly detection and quark-gluon tagging. For low-level simulations, we will explore strategies to further enhance efficiency. The code for training, sampling, and evaluation, including the bootstrap, classifier, and consistency-check evaluation pipelines used for this revision, is publicly available at \url{https://github.com/DickyChant/BUFF}.
 
 \section{Acknowledgements}
 

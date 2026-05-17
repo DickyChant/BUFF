@@ -1,0 +1,42 @@
+{
+  "config": {
+    "real_hdf5": "/pscratch/sd/s/sqian/buff_f2d2/data/jetnet_raw/t.hdf5",
+    "gen_npy": "/pscratch/sd/s/sqian/buff_f2d2/jetnet_30x3/t30x3/generated_samples.npy",
+    "n_jets_used": 177945,
+    "n_bootstrap": 100,
+    "per_particle_subsample": 200000,
+    "seed": 42
+  },
+  "metrics": {
+    "jet_mass_rel": {
+      "w1_mean": 0.2769192042898086,
+      "w1_std": 0.0002364233592260932,
+      "truth_mean": 0.0001762115329831535,
+      "truth_std": 6.555135910923292e-05
+    },
+    "jet_pt_rel": {
+      "w1_mean": 0.2299564531732248,
+      "w1_std": 0.000704617494327533,
+      "truth_mean": 0.0003754484537780205,
+      "truth_std": 0.000135657545200547
+    },
+    "particle_eta_rel": {
+      "w1_mean": 0.18966264386117426,
+      "w1_std": 0.0005794275738111542,
+      "truth_mean": 0.0007039000723878619,
+      "truth_std": 0.0002483490435435574
+    },
+    "particle_phi_rel": {
+      "w1_mean": 0.1295904164221787,
+      "w1_std": 0.0004197858947188862,
+      "truth_mean": 0.0006992921276505515,
+      "truth_std": 0.00024635945606622236
+    },
+    "particle_pt_rel": {
+      "w1_mean": 0.010704824553268868,
+      "w1_std": 0.00016959312545161023,
+      "truth_mean": 0.00023719457369161164,
+      "truth_std": 8.081644260222257e-05
+    }
+  }
+}
