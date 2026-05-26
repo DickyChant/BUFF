@@ -1,0 +1,105 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\begin{document}
+
+\noindent
+Dear Editor,
+\bigskip
+
+\noindent
+We thank you and the referee for the careful and constructive evaluation of
+our manuscript \textbf{``BUFF: Boosted Decision Tree based Ultra-Fast Flow
+matching''} (manuscript number \textbf{DR13756/Jiang}; arXiv:2404.18219).
+Please find enclosed:
+\begin{itemize}
+  \item the revised manuscript (\texttt{prd.tex} / \texttt{prd.pdf});
+  \item a point-by-point reply to the referee (\texttt{referee\_reply.pdf});
+  \item a public code repository at
+        \url{https://github.com/DickyChant/BUFF} containing the training,
+        sampling, and evaluation pipelines used throughout the revision.
+\end{itemize}
+
+\bigskip
+\noindent
+We have addressed every point raised by the referee.  In summary, the
+principal changes in this revision are:
+
+\begin{enumerate}
+
+  \item \textbf{Uncertainties and finite-sample truth baselines on every
+        metric.}  All separation-power and Wasserstein-1 numbers in
+        Tables~1 and~2 are now reported with bootstrap uncertainties
+        ($n=100$), together with a truth-baseline floor obtained by
+        splitting the real data into two independent halves.  This
+        follows the standard set by Ref.~[58] (Kansal et al., the JetNet
+        paper).  Table~1 has been recomputed end-to-end on a single
+        self-consistent evaluation run so that the flowBDT and
+        truth-floor columns share the same statistics.
+
+  \item \textbf{Standard JetNet 30$\times$3 particle-level benchmark
+        (new Table~2).}  We now report bootstrap-aware unbinned $W_1$
+        distances on the jet mass, jet $p_T$, and each per-particle
+        feature ($\eta^\mathrm{rel}$, $\phi^\mathrm{rel}$,
+        $p_T^\mathrm{rel}$), following Ref.~[58].  Two columns are
+        reported: the raw flowBDT output and a post-hoc rescaling that
+        matches the empirical jet $p_T$ distribution.  The per-particle
+        marginals lie within $\sim\!50\times$ the truth floor; the
+        residual jet-level gap is discussed honestly as a limitation of
+        the per-feature regression strategy.
+
+  \item \textbf{Discriminator-based test for CaloChallenge (new ROC and
+        AUC in Section~IV.B).}  An MLP classifier is trained to
+        distinguish real Geant4 showers from generated samples on the
+        8-feature high-level representation; the bootstrap AUC is
+        $0.9995 \pm 0.0002$.  We discuss the near-unity value frankly as
+        a consequence of (i) the per-feature MSE objective not directly
+        constraining the joint distribution and (ii) min-max
+        boundary-clipping artifacts.
+
+  \item \textbf{Quantitative $\tau_{21}$ / $\tau_{32}$ consistency
+        check.}  The directly generated $\tau_{21}$ ($\tau_{32}$) is
+        compared to the ratio $\tau_2/\tau_1$ ($\tau_3/\tau_2$)
+        reconstructed from independently generated components.  The
+        $W_1$ discrepancies are $\sim\!0.014$ ($\sim\!0.029$),
+        respectively, comparable to the finite-sample floor.
+
+  \item \textbf{Figure~8 regenerated from scratch}, fixing the
+        overlapping vertical-axis labels noted by the referee.  The new
+        figure uses ratio sub-panels and was produced by an end-to-end
+        reproduction pipeline (data $\to$ Flow-Diffu training $\to$
+        Flow-OT training $\to$ plot) included in the public repository.
+
+  \item \textbf{Clarification of contributions vs.\ Ref.~[47]},
+        explicit data-handling paragraph (continuous data,
+        zero-padding/mask, min-max scaling), corrected references
+        (Kansal, N-subjettiness, ECF, OmniFold Zenodo, GFlash Zenodo),
+        renamed Section~IV (``Tasks''~$\to$~``Results''), and a
+        thorough language pass.
+
+  \item \textbf{Public code release} with reproduction scripts for all
+        new metrics in this revision (\texttt{evaluation/},
+        \texttt{scripts/} directories), including the slurm wrappers
+        used to produce the numbers in Tables~1 and~2 and Figure~8.
+
+  \item \textbf{Code-availability statement} added to the Conclusion
+        pointing to the public repository.
+
+\end{enumerate}
+
+\bigskip
+\noindent
+We believe the revised manuscript addresses all the referee's concerns
+substantively, and we hope it is now suitable for publication in Physical
+Review D.  We thank you again for your patience and the referee for the
+thorough and helpful report.
+
+\bigskip
+\noindent
+Sincerely,\\[4pt]
+Sitian Qian, on behalf of the authors\\
+(Jiang, Qian, Qu)
+
+\end{document}
