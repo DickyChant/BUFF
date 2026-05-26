@@ -1,0 +1,45 @@
+{
+  "feature_names": [
+    "mass",
+    "width",
+    "mult",
+    "ln_rho",
+    "zg",
+    "tau21"
+  ],
+  "n_samples": 298410,
+  "metric": "wasserstein_1",
+  "description": "W1 distance between (sim/flow_diffu/flow_ot) and gen reference for Fig 8 unfolding observables",
+  "results": {
+    "mass": {
+      "sim_vs_gen": 3.3336068656892666,
+      "flow_diffu_vs_gen": 0.5118725633901688,
+      "flow_ot_vs_gen": 0.09980276375269873
+    },
+    "width": {
+      "sim_vs_gen": 0.01804248544762993,
+      "flow_diffu_vs_gen": 0.003468287505368726,
+      "flow_ot_vs_gen": 0.000330419544223539
+    },
+    "mult": {
+      "sim_vs_gen": 7.105237760128679,
+      "flow_diffu_vs_gen": 0.5762887256058078,
+      "flow_ot_vs_gen": 0.2861056291238816
+    },
+    "ln_rho": {
+      "sim_vs_gen": 0.36907479781646835,
+      "flow_diffu_vs_gen": 0.08767102410823784,
+      "flow_ot_vs_gen": 0.032418760613818765
+    },
+    "zg": {
+      "sim_vs_gen": 0.009845014382837238,
+      "flow_diffu_vs_gen": 0.0037529037667657535,
+      "flow_ot_vs_gen": 0.0010472382423225405
+    },
+    "tau21": {
+      "sim_vs_gen": 0.059940776962961455,
+      "flow_diffu_vs_gen": 0.00849242394242885,
+      "flow_ot_vs_gen": 0.002012960176251873
+    }
+  }
+}
