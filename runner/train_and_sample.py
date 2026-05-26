@@ -223,6 +223,32 @@ def parse_args():
              "OT-style unfolding where the source is detector-level and the target is "
              "particle-level. The source is scaled with the SAME min-max scaler as the target.",
     )
+    p.add_argument(
+        "--regressor", choices=["xgboost", "lightgbm"], default="xgboost",
+        help="GBT backend.  'lightgbm' is required for --linear-tree (piecewise-linear "
+             "velocity field).  LightGBM forces per-feature mode (no vector-leaf "
+             "multi-output).",
+    )
+    p.add_argument(
+        "--linear-tree", action="store_true",
+        help="LightGBM only: fit a linear regression at each leaf instead of a constant. "
+             "Produces a piecewise-LINEAR velocity field which behaves much better with "
+             "adaptive ODE solvers (DOPRI5, Midpoint) than the default piecewise-constant.",
+    )
+    p.add_argument(
+        "--residual", action="store_true",
+        help="Two-pass residual stacking: pass-1 per-feature regressors give a baseline "
+             "v_hat; pass-2 regressors take input [xt, v_hat] and predict the residual. "
+             "Pass-2 sees what the other features predicted, recovering joint correlations.",
+    )
+    p.add_argument(
+        "--residual-pass2-depth", type=int, default=None,
+        help="Override max_depth for the residual pass-2 models (default: same as pass 1).",
+    )
+    p.add_argument(
+        "--residual-pass2-nest", type=int, default=None,
+        help="Override n_estimators for the residual pass-2 models (default: same as pass 1).",
+    )
     return p.parse_args()
 
 
@@ -271,6 +297,81 @@ def prepare_scaling(X, y, duplicate_K):
     X_scaled = scaler.fit_transform(X)
 
     return X_scaled, scaler, mask_y, y_uniques, y_probs
+
+
+def _make_regressor(args, overrides=None):
+    """Backend-agnostic regressor factory.
+
+    Returns either an XGBoost or a LightGBM regressor depending on
+    ``args.regressor``.  ``overrides`` is an optional dict of hyperparameter
+    overrides (used by the residual two-pass to inject pass2_args values).
+
+    Notes
+    -----
+    - LightGBM with ``--linear-tree`` fits a linear model at each leaf,
+      yielding piecewise-LINEAR velocity fields instead of piecewise-constant.
+      This is critical for adaptive ODE solvers (DOPRI5, Midpoint) that
+      assume some smoothness when choosing step sizes.
+    - LightGBM has no analog of XGBoost's ``multi_strategy='multi_output_tree'``;
+      this factory always returns a single-output regressor.  Callers needing
+      multi-output behaviour with LightGBM should fit one regressor per output
+      (the per-feature path already does this).
+    """
+    overrides = overrides or {}
+
+    def _get(name, default):
+        if name in overrides:
+            return overrides[name]
+        return getattr(args, name, default)
+
+    n_estimators = _get("n_estimators", 100)
+    max_depth = _get("max_depth", 4)
+    eta = _get("eta", 0.1)
+    reg_lambda = _get("reg_lambda", 0.1)
+    reg_alpha = _get("reg_alpha", 0.2)
+    subsample = _get("subsample", 1.0)
+    colsample = _get("colsample_bytree", 1.0)
+    n_threads = _get("n_threads", 16)
+    backend = getattr(args, "regressor", "xgboost")
+
+    if backend == "lightgbm":
+        import lightgbm as lgb
+        # num_leaves caps the tree size: 2^depth is the natural upper bound.
+        num_leaves = min(2 ** max(max_depth, 1), 255) if max_depth > 0 else 31
+        kw = dict(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=eta,
+            num_leaves=num_leaves,
+            reg_lambda=reg_lambda,
+            reg_alpha=reg_alpha,
+            colsample_bytree=colsample,
+            n_jobs=n_threads,
+            random_state=666,
+            linear_tree=bool(getattr(args, "linear_tree", False)),
+            verbose=-1,
+        )
+        if subsample < 1.0:
+            # LightGBM only honours subsample when bagging_freq>0
+            kw["subsample"] = subsample
+            kw["subsample_freq"] = 1
+        return lgb.LGBMRegressor(**kw)
+
+    # default: xgboost
+    return xgb.XGBRegressor(
+        n_estimators=n_estimators,
+        objective="reg:squarederror",
+        eta=eta,
+        max_depth=max_depth,
+        n_jobs=n_threads,
+        reg_lambda=reg_lambda,
+        reg_alpha=reg_alpha,
+        subsample=subsample,
+        colsample_bytree=colsample,
+        seed=666,
+        tree_method=getattr(args, "tree_method", "hist"),
+        device=getattr(args, "device", "cpu"),
+    )
 
 
 def train_batched(X_scaled, y, duplicate_K, n_t, flow_type, sigma, mask_y,
@@ -328,8 +429,15 @@ def train_batched(X_scaled, y, duplicate_K, n_t, flow_type, sigma, mask_y,
             X_masked = xt_np[mask, :]
             y_masked = ut_np[mask, :]
 
-            colsample = getattr(args, 'colsample_bytree', 1.0)
             if multi_output:
+                # LightGBM doesn't support vector-leaf multi-output; fall back
+                # to XGBoost for this branch even if --regressor lightgbm.
+                if getattr(args, "regressor", "xgboost") == "lightgbm":
+                    raise RuntimeError(
+                        "--multi-output is not supported with --regressor lightgbm; "
+                        "use per-feature mode (omit --multi-output) when using LightGBM."
+                    )
+                colsample = getattr(args, 'colsample_bytree', 1.0)
                 model = xgb.XGBRegressor(
                     n_estimators=args.n_estimators,
                     objective="reg:squarederror",
@@ -349,20 +457,7 @@ def train_batched(X_scaled, y, duplicate_K, n_t, flow_type, sigma, mask_y,
                 regr_mo[ji][i] = model
             else:
                 for k in range(c):
-                    model = xgb.XGBRegressor(
-                        n_estimators=args.n_estimators,
-                        objective="reg:squarederror",
-                        eta=args.eta,
-                        max_depth=args.max_depth,
-                        n_jobs=args.n_threads,
-                        reg_lambda=args.reg_lambda,
-                        reg_alpha=args.reg_alpha,
-                        subsample=args.subsample,
-                        colsample_bytree=colsample,
-                        seed=666,
-                        tree_method=args.tree_method,
-                        device=getattr(args, 'device', 'cpu'),
-                    )
+                    model = _make_regressor(args)
                     model.fit(X_masked, y_masked[:, k])
                     regr[ji][i][k] = model
 
@@ -416,13 +511,7 @@ def train_batched_with_residuals(X_scaled, y, duplicate_K, n_t, flow_type, sigma
             X_masked = xt_np[mask, :]
             y_masked = ut_np[mask, :]
             for k in range(c):
-                model = xgb.XGBRegressor(
-                    n_estimators=args.n_estimators, objective="reg:squarederror",
-                    eta=args.eta, max_depth=args.max_depth, n_jobs=args.n_threads,
-                    reg_lambda=args.reg_lambda, reg_alpha=args.reg_alpha,
-                    subsample=args.subsample, colsample_bytree=colsample,
-                    seed=666, tree_method=args.tree_method, device=getattr(args, 'device', 'cpu'),
-                )
+                model = _make_regressor(args)
                 model.fit(X_masked, y_masked[:, k])
                 regr_p1[ji][i][k] = model
 
@@ -442,14 +531,7 @@ def train_batched_with_residuals(X_scaled, y, duplicate_K, n_t, flow_type, sigma
             residual = y_masked - v_hat
 
             for k in range(c):
-                model = xgb.XGBRegressor(
-                    n_estimators=pass2_args.n_estimators, objective="reg:squarederror",
-                    eta=pass2_args.eta, max_depth=pass2_args.max_depth,
-                    n_jobs=pass2_args.n_threads,
-                    reg_lambda=pass2_args.reg_lambda, reg_alpha=pass2_args.reg_alpha,
-                    subsample=pass2_args.subsample, colsample_bytree=colsample_p2,
-                    seed=666, tree_method=pass2_args.tree_method, device=getattr(pass2_args, 'device', 'cpu'),
-                )
+                model = _make_regressor(pass2_args)
                 model.fit(X_aug, residual[:, k])
                 regr_p2[ji][i][k] = model
 
@@ -835,13 +917,19 @@ def build_model_fn(regr, y_uniques, c, n_t, mask_y, multi_output=False):
     return partial(my_model, mask_y=mask_y)
 
 
-def sample(regr, y_uniques, y_probs, c, n_t, scaler, X_min, X_max, solver, solver_steps, n_samples, multi_output=False, source_scaled=None):
+def sample(regr, y_uniques, y_probs, c, n_t, scaler, X_min, X_max, solver, solver_steps, n_samples, multi_output=False, source_scaled=None, model_fn_builder=None):
     """Generate samples from trained flowBDT models.
 
     If ``source_scaled`` is provided, the initial condition x0 is drawn (with
     replacement) from ``source_scaled`` instead of from ``N(0, I)``.  Use this
     for Flow-OT-style conditional generation where the prior is, e.g., a
     detector-level distribution.
+
+    If ``model_fn_builder`` is provided, it is called as
+    ``model_fn_builder(mask_y_fake)`` to build the model function (used by
+    the two-pass residual sampler, which packs (regr_p1, regr_p2) into
+    ``regr`` and needs a different per-timestep eval routine).  Default is
+    the standard ``build_model_fn``.
     """
     if source_scaled is not None:
         rng = np.random.RandomState(None)
@@ -858,7 +946,10 @@ def sample(regr, y_uniques, y_probs, c, n_t, scaler, X_min, X_max, solver, solve
     for label in y_uniques:
         mask_y_fake[label] = (label_y == label)
 
-    model_fn = build_model_fn(regr, y_uniques, c, n_t, mask_y_fake, multi_output=multi_output)
+    if model_fn_builder is not None:
+        model_fn = model_fn_builder(mask_y_fake)
+    else:
+        model_fn = build_model_fn(regr, y_uniques, c, n_t, mask_y_fake, multi_output=multi_output)
 
     solvers = {
         "euler": euler_solve,
@@ -974,16 +1065,39 @@ def main():
         print(f"  Source scaled: shape={source_scaled.shape}  "
               f"range=[{source_scaled.min():.3f}, {source_scaled.max():.3f}]")
 
+    # Flag compatibility checks
+    if args.residual and args.multi_output:
+        raise SystemExit("--residual is only implemented in per-feature mode; drop --multi-output.")
+    if args.linear_tree and args.regressor != "lightgbm":
+        print("[warn] --linear-tree has no effect with --regressor xgboost; ignoring.")
+    if args.residual and source_scaled is not None:
+        raise SystemExit("--residual + --source-data not wired together yet (would need source_scaled in two-pass training loop).")
+
     # Train (batched — one timestep at a time, 30x less memory)
-    mode = "multi-output" if args.multi_output else "per-feature"
+    mode = "multi-output" if args.multi_output else ("two-pass residual (per-feature)" if args.residual else "per-feature")
     src_mode = "Flow-OT (source-conditioned)" if source_scaled is not None else "Flow-Diffu (Gaussian prior)"
-    print(f"Training XGBoost regressors ({mode}, {args.flow_type}, {src_mode})...")
+    backend_str = f"backend={args.regressor}" + (", linear_tree" if (args.regressor == "lightgbm" and args.linear_tree) else "")
+    print(f"Training regressors ({mode}, {backend_str}, {args.flow_type}, {src_mode})...")
     t0 = time.time()
-    regr = train_batched(
-        X_scaled, y, args.duplicate_k, args.n_timesteps,
-        args.flow_type, args.sigma, mask_y, y_uniques, c, args,
-        source_scaled=source_scaled,
-    )
+    if args.residual:
+        # Build a pass-2 override args object if user provided overrides.
+        pass2_args = argparse.Namespace(**vars(args))
+        if args.residual_pass2_depth is not None:
+            pass2_args.max_depth = args.residual_pass2_depth
+        if args.residual_pass2_nest is not None:
+            pass2_args.n_estimators = args.residual_pass2_nest
+        regr_p1, regr_p2 = train_batched_with_residuals(
+            X_scaled, y, args.duplicate_k, args.n_timesteps,
+            args.flow_type, args.sigma, mask_y, y_uniques, c, args,
+            pass2_args=pass2_args,
+        )
+        regr = (regr_p1, regr_p2)
+    else:
+        regr = train_batched(
+            X_scaled, y, args.duplicate_k, args.n_timesteps,
+            args.flow_type, args.sigma, mask_y, y_uniques, c, args,
+            source_scaled=source_scaled,
+        )
     print(f"Training done in {time.time() - t0:.1f}s")
 
     # Save models + scaler
@@ -994,16 +1108,29 @@ def main():
                       "y_uniques": y_uniques, "y_probs": y_probs,
                       "c": c, "n_t": args.n_timesteps,
                       "multi_output": args.multi_output,
+                      "residual": args.residual,
+                      "regressor": args.regressor,
+                      "linear_tree": args.linear_tree,
                       "derived_info": derived_info}, f)
 
     # Sample
     n_samples = args.n_samples if args.n_samples > 0 else b
-    solution, labels = sample(
-        regr, y_uniques, y_probs, c, args.n_timesteps,
-        scaler, X_min, X_max, args.solver, args.solver_steps, n_samples,
-        multi_output=args.multi_output,
-        source_scaled=source_scaled,
-    )
+    if args.residual:
+        regr_p1, regr_p2 = regr
+        builder = lambda mask: build_model_fn_residual(regr_p1, regr_p2, y_uniques, c, args.n_timesteps, mask)
+        solution, labels = sample(
+            None, y_uniques, y_probs, c, args.n_timesteps,
+            scaler, X_min, X_max, args.solver, args.solver_steps, n_samples,
+            multi_output=False, source_scaled=source_scaled,
+            model_fn_builder=builder,
+        )
+    else:
+        solution, labels = sample(
+            regr, y_uniques, y_probs, c, args.n_timesteps,
+            scaler, X_min, X_max, args.solver, args.solver_steps, n_samples,
+            multi_output=args.multi_output,
+            source_scaled=source_scaled,
+        )
 
     # Cholesky correlation correction (applied BEFORE restoring derived features
     # so that functional relationships like tau21=tau2/tau1 are preserved)
