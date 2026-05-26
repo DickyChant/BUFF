@@ -1,0 +1,24 @@
+{
+  "description": "Sanity check: train the same MLP discriminator (128, 64 hidden) on two independent random halves of the real top-jet HLV data. AUC should collapse to 0.5 if the architecture is calibrated.",
+  "data": "/pscratch/sd/s/sqian/buff_f2d2/data/jetnet/t_hlv12.npy",
+  "n_total": 177945,
+  "n_per_half": 88972,
+  "n_splits": 5,
+  "auc_per_split": [
+    0.4964,
+    0.4974,
+    0.5003,
+    0.4991,
+    0.4979
+  ],
+  "auc_train_per_split": [
+    0.5061,
+    0.514,
+    0.5112,
+    0.5111,
+    0.5157
+  ],
+  "auc_test_mean": 0.4982,
+  "auc_test_std": 0.0015,
+  "interpretation": "The MLP cannot distinguish two random halves of real data (AUC ~ 0.5 within statistical floor). The architecture is calibrated at chance, so the BUFF vs real AUC ~= 0.997 reflects genuine distributional differences rather than discriminator-architecture overfitting."
+}
